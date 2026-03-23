@@ -687,23 +687,41 @@ async function exportCollPDF(monYM) {
     var TH = function(t){ return '<th style="background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:11px;border:1px solid #ccc">'+t+'</th>'; };
     var TD = function(t,s){ return '<td style="padding:5px 8px;border:1px solid #e0e0e0;font-size:11px;'+(s||'')+'">'+t+'</td>'; };
 
-    var bodyHTML = '<style>body{font-family:Arial,sans-serif;direction:rtl;font-size:12px;color:#111}'
-      +'table{width:100%;border-collapse:collapse;margin-bottom:12px}'
-      +'.apt-total td{background:#e8f0e8!important;font-weight:700}'
-      +'</style>';
+    var bodyHTML = '<style>'
+      +'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;font-size:12px;color:#111;margin:0;padding:0}'
+      +'table{width:100%;border-collapse:collapse}'
+      +'th{font-size:11px;font-weight:700;text-align:right;padding:8px 10px;color:#444}'
+      +'td{font-size:11px;padding:7px 10px;text-align:right;border-bottom:1px solid #f0f0f0}'
+      +'</style>'
+      +'<div style="font-family:Arial,Helvetica,sans-serif;direction:rtl;background:#fff;padding:20px;max-width:820px;margin:0 auto">';
 
     // Header
-    bodyHTML += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #1a3a6a">'
-      +'<div><div style="font-size:1.2rem;font-weight:700">Wahdati — تقرير التحصيل الفعلي</div>'
-      +'<div style="font-size:.82rem;color:#444;margin-top:3px">'+monYM+' · نسبة التحصيل: <b style="color:'+(pct>=90?'#1a4a2a':pct>=60?'#7a5000':'#8a1000')+'">'+pct+'%</b></div></div>'
-      +'<div style="text-align:left;font-size:.75rem;color:#666">طباعة: '+date+'</div></div>';
+    bodyHTML += '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #1a3a6a;padding-bottom:14px;margin-bottom:20px">'
+      +'<div>'
+      +'<div style="font-size:20px;font-weight:800;color:#1a3a6a">Wahdati — تسوية شهرية</div>'
+      +'<div style="font-size:13px;color:#555;margin-top:3px;font-weight:600">'+monYM+'</div>'
+      +'<div style="font-size:11px;color:#888;margin-top:2px">تاريخ الطباعة: '+date+'</div>'
+      +'</div>'
+      +'<div style="text-align:left">'
+      +'<div style="font-size:22px;font-weight:800;color:'+(pct>=90?'#166534':pct>=60?'#92400e':'#991b1b')+'">'+pct+'%</div>'
+      +'<div style="font-size:10px;color:#888">نسبة التحصيل</div>'
+      +'</div>'
+      +'</div>';
 
-    // Summary bar
-    bodyHTML += '<div style="display:flex;gap:16px;background:#f5f7ff;border:1px solid #c0d0f0;border-radius:6px;padding:10px 14px;margin-bottom:16px">'
-      +'<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#1a4a2a">'+totalCollected.toLocaleString()+'</div><div style="font-size:10px;color:#555">محصّل (AED)</div></div>'
-      +'<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#2456d3">'+totalTarget.toLocaleString()+'</div><div style="font-size:10px;color:#555">مستهدف (AED)</div></div>'
-      +'<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:#c0392b">'+(totalTarget-totalCollected).toLocaleString()+'</div><div style="font-size:10px;color:#555">متبقي (AED)</div></div>'
-      +'<div style="text-align:center"><div style="font-size:16px;font-weight:700;color:'+(pct>=90?'#1a4a2a':pct>=60?'#7a5000':'#8a1000')+'">'+pct+'%</div><div style="font-size:10px;color:#555">نسبة التحصيل</div></div>'
+    // Summary bar — 4 KPI cards
+    bodyHTML += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">'
+      +'<div style="background:#f0faf5;border:1.5px solid #a7d7bc;border-radius:10px;padding:12px;text-align:center">'
+        +'<div style="font-size:17px;font-weight:800;color:#166534">'+totalCollected.toLocaleString()+'</div>'
+        +'<div style="font-size:10px;color:#555;margin-top:2px">محصّل (AED)</div></div>'
+      +'<div style="background:#f5f7ff;border:1.5px solid #c0d0f0;border-radius:10px;padding:12px;text-align:center">'
+        +'<div style="font-size:17px;font-weight:800;color:#2456d3">'+totalTarget.toLocaleString()+'</div>'
+        +'<div style="font-size:10px;color:#555;margin-top:2px">مستهدف (AED)</div></div>'
+      +'<div style="background:#fff8f8;border:1.5px solid #f0a0a0;border-radius:10px;padding:12px;text-align:center">'
+        +'<div style="font-size:17px;font-weight:800;color:#c0392b">'+(totalTarget-totalCollected).toLocaleString()+'</div>'
+        +'<div style="font-size:10px;color:#555;margin-top:2px">متبقي (AED)</div></div>'
+      +'<div style="background:'+(pct>=90?'#f0faf5':pct>=60?'#fef9ec':'#fff8f8')+';border:1.5px solid '+(pct>=90?'#a7d7bc':pct>=60?'#f6cc7c':'#f0a0a0')+';border-radius:10px;padding:12px;text-align:center">'
+        +'<div style="font-size:17px;font-weight:800;color:'+(pct>=90?'#166534':pct>=60?'#92400e':'#c0392b')+'">'+pct+'%</div>'
+        +'<div style="font-size:10px;color:#555;margin-top:2px">نسبة التحصيل</div></div>'
       +'</div>';
 
     // Per apartment tables
@@ -711,8 +729,13 @@ async function exportCollPDF(monYM) {
       var aptUnits = aptGroups[apt];
       var aptColl=0, aptTarget=0;
 
-      bodyHTML += '<div style="font-size:13px;font-weight:700;color:#1a3a6a;border-bottom:2px solid #1a3a6a;padding-bottom:4px;margin-bottom:6px;margin-top:14px">🏢 شقة '+apt+'</div>';
-      bodyHTML += '<table><thead><tr>'+TH('غرفة')+TH('المستأجر')+TH('الإيجار')+TH('تأمين محتجز')+TH('مدفوع')+TH('تاريخ الاستلام')+TH('الحالة')+'</tr></thead><tbody>';
+      bodyHTML += '<div style="margin-top:16px;border:1px solid #e8eef8;border-radius:10px;overflow:hidden">'
+        +'<div style="background:#1a3a6a;color:#fff;padding:9px 14px;display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-size:13px;font-weight:800">🏢 شقة '+apt+'</span>'
+        +'</div>';
+      bodyHTML += '<table style="margin:0"><thead><tr style="background:#f0f4ff">'
+        +TH('غرفة')+TH('المستأجر')+TH('الإيجار')+TH('تأمين')+TH('مدفوع')+TH('التاريخ')+TH('الحالة')
+        +'</tr></thead><tbody>';
 
       aptUnits.forEach(function(u){
         var key  = String(u.apartment)+'-'+String(u.room);
@@ -721,37 +744,40 @@ async function exportCollPDF(monYM) {
         var dep  = depHeldMap[u.id]||0;
         var dates= pg?pg.rows.map(function(p){return(p.payment_date||'').slice(0,10);}).filter(Boolean).join(', '):'—';
         var status = paid>=(u.monthly_rent||0)&&(u.monthly_rent||0)>0?'✅ مدفوع':paid>0?'⚠️ جزئي':'❌ لم يدفع';
-        var sc = paid>=(u.monthly_rent||0)?'#1a4a2a':paid>0?'#7a5000':'#8a1000';
+        var sc = paid>=(u.monthly_rent||0)?'#166534':paid>0?'#92400e':'#991b1b';
+        var rowBg = paid>=(u.monthly_rent||0)?'':'background:#fffbf0';
         aptColl   += paid;
         aptTarget += u.monthly_rent||0;
 
-        bodyHTML += '<tr>'
+        bodyHTML += '<tr style="'+rowBg+'">'
           +TD('<b>'+u.room+'</b>')
-          +TD((u.tenant_name||'—')+(u.tenant_name2?' & '+u.tenant_name2:''))
+          +TD((u.tenant_name||'—')+(u.tenant_name2?' &amp; '+u.tenant_name2:''))
           +TD((u.monthly_rent||0).toLocaleString()+' AED')
           +TD(dep>0?dep.toLocaleString()+' AED':'—','color:#2456d3')
-          +TD(paid>0?'<b>'+paid.toLocaleString()+' AED</b>':'—','color:'+(paid>0?'#1a4a2a':'#999'))
-          +TD(dates,'font-size:10px')
-          +TD(status,'color:'+sc+';font-weight:600')
+          +TD(paid>0?'<b>'+paid.toLocaleString()+' AED</b>':'—','color:'+(paid>0?'#166534':'#991b1b'))
+          +TD(dates,'font-size:10px;color:#777')
+          +TD(status,'color:'+sc+';font-weight:700;font-size:11px')
           +'</tr>';
       });
 
       var aptPct = aptTarget>0?Math.round(aptColl/aptTarget*100):0;
-      bodyHTML += '<tr class="apt-total">'
-        +TD('<b>إجمالي</b>','background:#e8f0e8')+TD('')
-        +TD(aptTarget.toLocaleString()+' AED','background:#e8f0e8')
+      bodyHTML += '<tr style="background:#e8f0e8;border-top:2px solid #a7d7bc">'
+        +TD('<b>إجمالي شقة '+apt+'</b>','font-size:11px;background:#e8f0e8')+TD('')
+        +TD(aptTarget.toLocaleString()+' AED','font-weight:700;background:#e8f0e8')
         +TD('')
-        +TD('<b>'+aptColl.toLocaleString()+' AED</b>','color:#1a4a2a;background:#e8f0e8')
+        +TD('<b>'+aptColl.toLocaleString()+' AED</b>','color:#166534;font-weight:700;background:#e8f0e8')
         +TD('')
-        +TD(aptPct+'%','color:'+(aptPct>=90?'#1a4a2a':aptPct>=60?'#7a5000':'#8a1000')+';background:#e8f0e8;font-weight:700')
-        +'</tr></tbody></table>';
+        +TD('<b>'+aptPct+'%</b>','color:'+(aptPct>=90?'#166534':aptPct>=60?'#92400e':'#991b1b')+';font-weight:800;background:#e8f0e8')
+        +'</tr></tbody></table></div>';
     });
 
-    // Grand total
-    bodyHTML += '<div style="background:#1a3a6a;color:#fff;padding:10px 14px;border-radius:6px;display:flex;justify-content:space-between;margin-top:8px">'
-      +'<span style="font-weight:700">الإجمالي الكلي للتحصيل</span>'
-      +'<span><b>'+totalCollected.toLocaleString()+' AED</b> من '+totalTarget.toLocaleString()+' ('+pct+'%)</span>'
-      +'</div>';
+    // Grand total bar
+    bodyHTML += '<div style="background:#1a3a6a;color:#fff;padding:12px 16px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-top:16px">'
+      +'<span style="font-weight:700;font-size:13px">الإجمالي الكلي للتحصيل</span>'
+      +'<span><b style="font-size:15px">'+totalCollected.toLocaleString()+' AED</b>'
+      +' <span style="font-size:11px;opacity:.85">من '+totalTarget.toLocaleString()+' ('+pct+'%)</span></span>'
+      +'</div>'
+      +'</div>'; // close main wrapper
 
     // Use pdfOverlay — same as monthly report (works on iOS)
     var el = document.getElementById('pdf-content');

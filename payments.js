@@ -999,18 +999,26 @@ async function printOwnerSettlement() {
     var depsFloorNos = Object.keys(depsByFloor).map(Number);
     var floorNos = Array.from(new Set(paysFloorNos.concat(depsFloorNos))).sort(function(a,b){ return a-b; });
 
-    var body = '<div dir="rtl" style="font-family:Arial,sans-serif;background:#fff;color:#111;padding:18px">'
-      +'<div style="text-align:center;border-bottom:2px solid #111;padding-bottom:12px;margin-bottom:14px">'
-      +'<div style="font-size:20px;font-weight:800">تسوية المالك</div>'
-      +'<div style="font-size:12px;color:#555;margin-top:4px">'+monthLabel+'</div>'
+    var body = '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;background:#fff;color:#111;padding:22px 20px;max-width:800px;margin:0 auto">'
+      +'<style>*{box-sizing:border-box}table{border-collapse:collapse;width:100%}@media print{.no-print{display:none}}</style>'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:20px">'
+      +'<div><div style="font-size:22px;font-weight:800;letter-spacing:-0.5px">تسوية المالك</div>'
+      +'<div style="font-size:13px;color:#555;margin-top:3px;font-weight:600">'+monthLabel+'</div></div>'
+      +'<div style="text-align:left;font-size:11px;color:#888;line-height:1.5">Wahdati<br>'+new Date().toLocaleDateString('ar-AE')+'</div>'
       +'</div>'
-      +'<div style="border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:12px">'
-      +row('إيجار محصّل', totalRent, '#166534')
-      +row('تأمينات مستلمة', totalDeps, '#b45309')
-      +row('مصاريف', totalExp, '#b91c1c')
-      +row('مدفوع للمالك', totalOwn, '#7c3aed')
-      +row('الصافي', balance, balance>=0 ? '#166534' : '#b91c1c')
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">'
+      +'<div style="background:#f0faf5;border:1.5px solid #a7d7bc;border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:#555;margin-bottom:4px">إيجار محصّل</div><div style="font-size:20px;font-weight:800;color:#166534">'+totalRent.toLocaleString()+'</div><div style="font-size:10px;color:#888">AED</div></div>'
+      +(totalDeps>0?'<div style="background:#fef9ec;border:1.5px solid #f6cc7c;border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:#555;margin-bottom:4px">تأمينات</div><div style="font-size:20px;font-weight:800;color:#b45309">'+totalDeps.toLocaleString()+'</div><div style="font-size:10px;color:#888">AED</div></div>':'<div></div>')
+      +'<div style="background:'+(balance>=0?'#f0faf5':'#fff0f0')+';border:1.5px solid '+(balance>=0?'#a7d7bc':'#f0a0a0')+';border-radius:10px;padding:12px 14px"><div style="font-size:11px;color:#555;margin-bottom:4px">الصافي</div><div style="font-size:20px;font-weight:800;color:'+(balance>=0?'#166534':'#b91c1c')+'">'+balance.toLocaleString()+'</div><div style="font-size:10px;color:#888">AED</div></div>'
       +'</div>'
+      +'<table style="margin-bottom:20px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">'
+      +'<thead><tr style="background:#f5f5f5"><th style="padding:9px 14px;text-align:right;font-size:12px;color:#444;font-weight:700;border-bottom:2px solid #e0e0e0">البند</th><th style="padding:9px 14px;text-align:left;font-size:12px;color:#444;font-weight:700;border-bottom:2px solid #e0e0e0">المبلغ</th></tr></thead><tbody>'
+      +'<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:10px 14px;font-size:13px">✅ إيجار محصّل</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#166534;text-align:left">'+totalRent.toLocaleString()+' AED</td></tr>'
+      +(totalDeps>0?'<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:10px 14px;font-size:13px">🔒 تأمينات مستلمة</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#b45309;text-align:left">'+totalDeps.toLocaleString()+' AED</td></tr>':'')
+      +(totalExp>0?'<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:10px 14px;font-size:13px">💸 مصاريف</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#b91c1c;text-align:left">'+totalExp.toLocaleString()+' AED</td></tr>':'')
+      +(totalOwn>0?'<tr style="border-bottom:1px solid #f0f0f0"><td style="padding:10px 14px;font-size:13px">👤 مدفوع للمالك</td><td style="padding:10px 14px;font-size:13px;font-weight:700;color:#7c3aed;text-align:left">'+totalOwn.toLocaleString()+' AED</td></tr>':'')
+      +'<tr style="background:'+(balance>=0?'#f0faf5':'#fff0f0')+';border-top:2px solid #e0e0e0"><td style="padding:11px 14px;font-size:14px;font-weight:800">💰 الصافي</td><td style="padding:11px 14px;font-size:14px;font-weight:800;color:'+(balance>=0?'#166534':'#b91c1c')+';text-align:left">'+balance.toLocaleString()+' AED</td></tr>'
+      +'</tbody></table>'
       +(floorNos.length ? '<div style="margin-bottom:12px">'+floorNos.map(function(floorNo){
         var paysRows = (paysByFloor[floorNo]||[]).slice().sort(function(a,b){
           var ar = String(a.room||''); var br = String(b.room||'');
@@ -1025,52 +1033,97 @@ async function printOwnerSettlement() {
         var floorDep  = depRows.reduce(function(s,d){ return s + (Number(d.amount)||0); }, 0);
         var floorTotal = floorRent + floorDep;
         var td = function(v, extra){ return '<td style="border:1px solid #ddd;padding:6px 8px;font-size:12px;vertical-align:top;'+(extra||'')+'">'+v+'</td>'; };
+        var tdS = function(v, s){ return '<td style="padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:12px;'+(s||'')+'">'+v+'</td>'; };
         var paysTable = paysRows.length
-          ? '<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr style="background:#f6f6f6"><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الغرفة</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">المبلغ</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">التاريخ</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الطريقة</th></tr></thead><tbody>'
+          ? '<table style="width:100%;border-collapse:collapse;margin-top:10px">'
+            +'<thead><tr style="background:#f0faf5">'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #c8e6c9">الغرفة</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #c8e6c9">المبلغ</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #c8e6c9">التاريخ</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #c8e6c9">الطريقة</th>'
+            +'</tr></thead><tbody>'
             + paysRows.map(function(p){
-              return '<tr>'
-                + td(esc(p.room||''))
-                + td(fmtAmt(p.amount||0), 'font-weight:700;color:#166534')
-                + td(esc((p.payment_date||'').slice(0,10)), 'color:#555')
-                + td(esc(p.payment_method||''), 'color:#555')
-                + '</tr>';
-            }).join('')
+                return '<tr>'
+                  + tdS('<b>'+esc(p.room||'')+'</b>')
+                  + tdS(fmtAmt(p.amount||0), 'font-weight:700;color:#166534')
+                  + tdS(esc((p.payment_date||'').slice(0,10)), 'color:#777;font-size:11px')
+                  + tdS(esc(p.payment_method||''), 'color:#777;font-size:11px')
+                  + '</tr>';
+              }).join('')
             + '</tbody></table>'
-          : '<div style="font-size:12px;color:#777;margin-top:8px">لا توجد دفعات إيجار في هذا الدور.</div>';
+          : '<div style="font-size:12px;color:#aaa;margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;text-align:center">لا توجد دفعات إيجار</div>';
         var depsTable = depRows.length
-          ? '<table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr style="background:#fff7ed"><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الغرفة</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الاسم</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">المبلغ</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">التاريخ</th></tr></thead><tbody>'
+          ? '<table style="width:100%;border-collapse:collapse;margin-top:10px">'
+            +'<thead><tr style="background:#fef9ec">'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #f6cc7c">الغرفة</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #f6cc7c">الاسم</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #f6cc7c">المبلغ</th>'
+            +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;color:#444;border-bottom:2px solid #f6cc7c">التاريخ</th>'
+            +'</tr></thead><tbody>'
             + depRows.map(function(d){
-              return '<tr>'
-                + td(esc(d.room||''))
-                + td(esc(d.tenant_name||''), 'color:#555')
-                + td(fmtAmt(d.amount||0), 'font-weight:700;color:#b45309')
-                + td(esc((d.deposit_received_date||'').slice(0,10)), 'color:#555')
-                + '</tr>';
-            }).join('')
+                return '<tr>'
+                  + tdS('<b>'+esc(d.room||'')+'</b>')
+                  + tdS(esc(d.tenant_name||'—'), 'color:#555')
+                  + tdS(fmtAmt(d.amount||0), 'font-weight:700;color:#b45309')
+                  + tdS(esc((d.deposit_received_date||'').slice(0,10)), 'color:#777;font-size:11px')
+                  + '</tr>';
+              }).join('')
             + '</tbody></table>'
-          : '<div style="font-size:12px;color:#777;margin-top:8px">لا توجد تأمينات في هذا الدور.</div>';
-        return '<div style="border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:12px">'
-          +'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'
-          +'<div style="font-size:15px;font-weight:800">'+padFloorLabel(floorNo)+'</div>'
-          +'<div style="font-size:12px;font-weight:700;color:#111">'+fmtAmt(floorTotal)+'</div>'
+          : '<div style="font-size:12px;color:#aaa;margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;text-align:center">لا توجد تأمينات</div>';
+        return '<div style="border:1px solid #e0e0e0;border-radius:12px;padding:14px 16px;margin-bottom:14px">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+          +'<div style="font-size:15px;font-weight:800;color:#1a3a6a">'+padFloorLabel(floorNo)+'</div>'
+          +'<div style="font-size:13px;font-weight:700;color:#111;background:#f0faf5;padding:4px 10px;border-radius:20px;border:1px solid #a7d7bc">'+fmtAmt(floorTotal)+'</div>'
           +'</div>'
-          +'<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:12px">'
-          +'<span style="color:#166534">إيجار: '+fmtAmt(floorRent)+'</span>'
-          +'<span style="color:#b45309">تأمين: '+fmtAmt(floorDep)+'</span>'
+          +'<div style="display:flex;gap:14px;font-size:12px;color:#666;margin-bottom:4px">'
+          +'<span>إيجار: <b style="color:#166534">'+fmtAmt(floorRent)+'</b></span>'
+          +(floorDep>0?'<span>تأمين: <b style="color:#b45309">'+fmtAmt(floorDep)+'</b></span>':'')
           +'</div>'
-          +'<div style="margin-top:10px">'+paysTable+'</div>'
-          +'<div style="margin-top:10px">'+depsTable+'</div>'
+          +(paysRows.length?'<div style="font-size:12px;font-weight:700;color:#444;margin-top:10px;margin-bottom:2px">🏠 دفعات الإيجار ('+paysRows.length+')</div>':'')
+          +paysTable
+          +(depRows.length?'<div style="font-size:12px;font-weight:700;color:#444;margin-top:12px;margin-bottom:2px">🔒 التأمينات ('+depRows.length+')</div>':'')
+          +depsTable
           +'</div>';
       }).join('')+'</div>' : '')
-      +(exps.length ? '<div style="border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:12px"><div style="font-size:15px;font-weight:800;margin-bottom:8px">المصاريف</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f6f6f6"><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الفئة</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الوصف</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">المبلغ</th></tr></thead><tbody>'
-        + exps.map(function(e){ return '<tr><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px">'+esc(e.category||'')+'</td><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px;color:#555">'+esc(e.description||'')+'</td><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px;font-weight:700;color:#b91c1c">'+fmtAmt(e.amount||0)+'</td></tr>'; }).join('')
-        + '</tbody></table></div>' : '')
-      +(owns.length ? '<div style="border:1px solid #eee;border-radius:12px;padding:12px 14px;margin-bottom:12px"><div style="font-size:15px;font-weight:800;margin-bottom:8px">مدفوعات المالك</div><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f6f6f6"><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">المبلغ</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">الطريقة</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">المرجع</th><th style="border:1px solid #ddd;padding:6px 8px;font-size:12px">ملاحظات</th></tr></thead><tbody>'
-        + owns.map(function(o){ return '<tr><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px;font-weight:700;color:#7c3aed">'+fmtAmt(o.amount||0)+'</td><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px">'+esc(o.method||'')+'</td><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px">'+esc(o.reference||'')+'</td><td style="border:1px solid #ddd;padding:6px 8px;font-size:12px;color:#555">'+esc(o.notes||'')+'</td></tr>'; }).join('')
-        + '</tbody></table></div>' : '')
-      +'<div style="font-size:11px;color:#666;text-align:center;margin-top:10px">وُلِّد بتاريخ '+new Date().toLocaleDateString(LANG==='ar'?'ar-AE':'en-GB')+'</div>'
+      +(exps.length ? '<div style="border:1px solid #e0e0e0;border-radius:12px;padding:14px 16px;margin-bottom:14px">'
+        +'<div style="font-size:15px;font-weight:800;color:#b91c1c;margin-bottom:10px">💸 المصاريف ('+exps.length+')</div>'
+        +'<table style="width:100%;border-collapse:collapse">'
+        +'<thead><tr style="background:#fff8f8">'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f0c0c0">الفئة</th>'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f0c0c0">الوصف</th>'
+        +'<th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;border-bottom:2px solid #f0c0c0">المبلغ</th>'
+        +'</tr></thead><tbody>'
+        + exps.map(function(e){
+            return '<tr style="border-bottom:1px solid #f8f0f0">'
+              +'<td style="padding:8px 10px;font-size:12px;font-weight:600">'+esc(e.category||'')+'</td>'
+              +'<td style="padding:8px 10px;font-size:12px;color:#666">'+esc(e.description||'—')+'</td>'
+              +'<td style="padding:8px 10px;font-size:12px;font-weight:700;color:#b91c1c;text-align:left">'+fmtAmt(e.amount||0)+'</td>'
+              +'</tr>';
+          }).join('')
+        +'<tr style="background:#fff0f0;border-top:2px solid #e0a0a0">'
+        +'<td colspan="2" style="padding:9px 10px;font-size:12px;font-weight:700">الإجمالي</td>'
+        +'<td style="padding:9px 10px;font-size:13px;font-weight:800;color:#b91c1c;text-align:left">'+fmtAmt(totalExp)+'</td>'
+        +'</tr></tbody></table></div>' : '')
+      +(owns.length ? '<div style="border:1px solid #e0e0e0;border-radius:12px;padding:14px 16px;margin-bottom:14px">'
+        +'<div style="font-size:15px;font-weight:800;color:#7c3aed;margin-bottom:10px">👤 مدفوعات المالك ('+owns.length+')</div>'
+        +'<table style="width:100%;border-collapse:collapse">'
+        +'<thead><tr style="background:#f8f0ff">'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #d0b0f0">المبلغ</th>'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #d0b0f0">الطريقة</th>'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #d0b0f0">المرجع</th>'
+        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #d0b0f0">ملاحظات</th>'
+        +'</tr></thead><tbody>'
+        + owns.map(function(o){
+            return '<tr style="border-bottom:1px solid #f5f0ff">'
+              +'<td style="padding:8px 10px;font-size:12px;font-weight:700;color:#7c3aed">'+fmtAmt(o.amount||0)+'</td>'
+              +'<td style="padding:8px 10px;font-size:12px">'+esc(o.method||'—')+'</td>'
+              +'<td style="padding:8px 10px;font-size:12px;color:#666">'+esc(o.reference||'—')+'</td>'
+              +'<td style="padding:8px 10px;font-size:12px;color:#666">'+esc(o.notes||'—')+'</td>'
+              +'</tr>';
+          }).join('')
+        +'</tbody></table></div>' : '')
+      +'<div style="font-size:11px;color:#888;text-align:center;margin-top:16px;padding-top:12px;border-top:1px solid #eee">وُلِّد بتاريخ '+new Date().toLocaleDateString(LANG==='ar'?'ar-AE':'en-GB')+'</div>'
       +'</div>';
-
     window._lastOwnerSettlementHTML = body;
 
     var overlay = document.getElementById('pdfOverlay');
