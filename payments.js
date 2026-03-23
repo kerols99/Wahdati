@@ -1000,66 +1000,86 @@ async function printOwnerSettlement() {
     });
     var aptNos = Object.keys(paysByApt).sort(function(a,b){ return (Number(a.replace(/\D/g,''))||0)-(Number(b.replace(/\D/g,''))||0); });
 
-    var body_apts = aptNos.map(function(apt){
-      var aptPays = paysByApt[apt].slice().sort(function(a,b){
+    // Deps map by apartment
+    var depsByApt = {};
+    deps.forEach(function(d){
+      var apt = String(d.apartment||'?');
+      if(!depsByApt[apt]) depsByApt[apt] = [];
+      depsByApt[apt].push(d);
+    });
+
+    // All apt numbers (pays + deps)
+    var allAptKeys = Array.from(new Set(Object.keys(paysByApt).concat(Object.keys(depsByApt))));
+    allAptKeys.sort(function(a,b){ return (Number(a.replace(/\D/g,''))||0)-(Number(b.replace(/\D/g,''))||0); });
+
+    var body_apts = allAptKeys.map(function(apt){
+      var aptPays = (paysByApt[apt]||[]).slice().sort(function(a,b){
         var ar=String(a.room||''), br=String(b.room||'');
         if(ar===br) return String(a.payment_date||'').localeCompare(String(b.payment_date||''));
         return ar.localeCompare(br,undefined,{numeric:true,sensitivity:'base'});
       });
-      var aptTotal = aptPays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-      return '<div style="border:1px solid #e0e0e0;border-radius:10px;margin-bottom:14px;overflow:hidden">'
+      var aptDeps = (depsByApt[apt]||[]).slice().sort(function(a,b){
+        return String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true,sensitivity:'base'});
+      });
+      var aptPayTotal = aptPays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+      var aptDepTotal = aptDeps.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+      var aptTotal    = aptPayTotal + aptDepTotal;
+
+      // Header bar
+      var html = '<div style="border:1px solid #e0e0e0;border-radius:10px;margin-bottom:14px;overflow:hidden">'
         +'<div style="background:#1a3a6a;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">'
         +'<div style="font-size:14px;font-weight:800">🏢 شقة '+esc(String(apt))+'</div>'
-        +'<div style="font-size:13px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:14px">'+fmtAmt(aptTotal)+'</div>'
-        +'</div>'
-        +'<table style="width:100%;border-collapse:collapse">'
-        +'<thead><tr style="background:#f0f4ff">'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #c0d0f0">الغرفة</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #c0d0f0">المبلغ</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #c0d0f0">التاريخ</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #c0d0f0">الطريقة</th>'
-        +'</tr></thead><tbody>'
-        + aptPays.map(function(p){
-            return '<tr>'
-              + tdS('<b>'+esc(String(p.room||''))+'</b>')
-              + tdS(fmtAmt(p.amount||0),'font-weight:700;color:#166534')
-              + tdS(esc((p.payment_date||'').slice(0,10)),'color:#777;font-size:11px')
-              + tdS(esc(p.payment_method||''),'color:#777;font-size:11px')
-              + '</tr>';
-          }).join('')
-        +'</tbody></table></div>';
-    }).join('');
+        +'<div style="display:flex;gap:10px;align-items:center">'
+        +(aptDepTotal>0?'<span style="font-size:11px;background:rgba(255,200,50,.2);padding:2px 8px;border-radius:10px">تأمين: '+fmtAmt(aptDepTotal)+'</span>':'')
+        +'<span style="font-size:13px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:14px">'+fmtAmt(aptTotal)+'</span>'
+        +'</div></div>';
 
-    var depsAll = deps.slice().sort(function(a,b){
-      var aptA=String(a.apartment||''), aptB=String(b.apartment||'');
-      if(aptA!==aptB) return (Number(aptA.replace(/\D/g,''))||0)-(Number(aptB.replace(/\D/g,''))||0);
-      return String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true,sensitivity:'base'});
-    });
-    var body_deps = depsAll.length
-      ? '<div style="border:1px solid #e0e0e0;border-radius:10px;margin-bottom:14px;overflow:hidden">'
-        +'<div style="background:#92400e;color:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">'
-        +'<div style="font-size:14px;font-weight:800">🔒 التأمينات ('+depsAll.length+')</div>'
-        +'<div style="font-size:13px;font-weight:700;background:rgba(255,255,255,.15);padding:3px 10px;border-radius:14px">'+fmtAmt(totalDeps)+'</div>'
-        +'</div>'
-        +'<table style="width:100%;border-collapse:collapse">'
-        +'<thead><tr style="background:#fef9ec">'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f6cc7c">الشقة</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f6cc7c">الغرفة</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f6cc7c">الاسم</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f6cc7c">المبلغ</th>'
-        +'<th style="padding:8px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:2px solid #f6cc7c">التاريخ</th>'
-        +'</tr></thead><tbody>'
-        + depsAll.map(function(d){
-            return '<tr>'
-              + tdS(esc(String(d.apartment||'—')),'font-weight:700')
-              + tdS(esc(String(d.room||'—')),'font-weight:700')
-              + tdS(esc(d.tenant_name||'—'),'color:#555')
-              + tdS(fmtAmt(d.amount||0),'font-weight:700;color:#b45309')
-              + tdS(esc((d.deposit_received_date||'').slice(0,10)),'color:#777;font-size:11px')
-              + '</tr>';
-          }).join('')
-        +'</tbody></table></div>'
-      : '';
+      // Payments table
+      if(aptPays.length) {
+        html += '<div style="font-size:11px;font-weight:700;color:#1a3a6a;padding:8px 10px 4px;border-bottom:1px solid #e8eef8">🏠 دفعات الإيجار ('+aptPays.length+')</div>'
+          +'<table style="width:100%;border-collapse:collapse">'
+          +'<thead><tr style="background:#f0f4ff">'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #c0d0f0">الغرفة</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #c0d0f0">المبلغ</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #c0d0f0">التاريخ</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #c0d0f0">الطريقة</th>'
+          +'</tr></thead><tbody>'
+          + aptPays.map(function(p){
+              return '<tr>'
+                + tdS('<b>'+esc(String(p.room||''))+'</b>')
+                + tdS(fmtAmt(p.amount||0),'font-weight:700;color:#166534')
+                + tdS(esc((p.payment_date||'').slice(0,10)),'color:#777;font-size:11px')
+                + tdS(esc(p.payment_method||''),'color:#777;font-size:11px')
+                + '</tr>';
+            }).join('')
+          +'</tbody></table>';
+      }
+
+      // Deposits table (under same apt section)
+      if(aptDeps.length) {
+        html += '<div style="font-size:11px;font-weight:700;color:#92400e;padding:8px 10px 4px;border-top:2px solid #f6cc7c;border-bottom:1px solid #fef3c7;background:#fffdf5">🔒 تأمينات الشقة ('+aptDeps.length+')</div>'
+          +'<table style="width:100%;border-collapse:collapse;background:#fffdf5">'
+          +'<thead><tr style="background:#fef9ec">'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f6cc7c">الغرفة</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f6cc7c">الاسم</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f6cc7c">المبلغ</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f6cc7c">التاريخ</th>'
+          +'</tr></thead><tbody>'
+          + aptDeps.map(function(d){
+              return '<tr>'
+                + tdS('<b>'+esc(String(d.room||''))+'</b>')
+                + tdS(esc(d.tenant_name||'—'),'color:#555')
+                + tdS(fmtAmt(d.amount||0),'font-weight:700;color:#b45309')
+                + tdS(esc((d.deposit_received_date||'').slice(0,10)),'color:#777;font-size:11px')
+                + '</tr>';
+            }).join('')
+          +'</tbody></table>';
+      }
+
+      html += '</div>';
+      return html;
+    }).join('');
+    var body_deps = ''; // now embedded per-apt
 
     var body_exps = exps.length
       ? '<div style="border:1px solid #e0e0e0;border-radius:10px;margin-bottom:14px;overflow:hidden">'
