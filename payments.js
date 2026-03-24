@@ -202,7 +202,7 @@ async function saveRent(btn) {
       payment_month:  (mon||'').slice(0,7),
       payment_date:   paymentDate,
       payment_method: meth,
-      lang:           unit.language || 'ar',
+      lang:           (unit.language||'ar').toLowerCase(),
     });
 
     toast(LANG==='ar'?'تم تسجيل الدفعة ✓':'Payment recorded ✓','ok');
@@ -214,7 +214,7 @@ async function saveRent(btn) {
       payment_method: meth,
       tenant: tenantName || unit.tenant_name || '',
       phone: unit.phone || unit.phone2 || '',
-      lang: unit.language || 'ar',
+      lang: (unit.language||'ar').toLowerCase(),
       receiptNo: rcptNo
     };
     var rc = document.getElementById('receipt-toast');
@@ -915,7 +915,7 @@ function printPaymentReceipt() {
   if(!r) return;
 
   // لغة الإيصال = لغة المستأجر المسجّلة (مش لغة التطبيق)
-  var isEn = (r.lang === 'en');
+  var isEn = (String(r.lang||'').toLowerCase() === 'en');
   var dateStr = r.date
     ? new Date(r.date).toLocaleDateString(isEn ? 'en-GB' : 'ar-AE')
     : new Date().toLocaleDateString(isEn ? 'en-GB' : 'ar-AE');
@@ -1072,14 +1072,17 @@ async function printOwnerSettlement() {
   var monthEndDate = window.monthEnd ? window.monthEnd(monYM) : (monYM + '-31');
 
   try {
-    var [pR, dR, eR, oR, uR] = await Promise.all([
+    var [pR, dR, eR, oR, uR, rR] = await Promise.all([
       sb.from('rent_payments').select('unit_id,apartment,room,amount,payment_date,payment_method').gte('payment_date',monthStartDate).lte('payment_date',monthEndDate),
-      sb.from('deposits').select('unit_id,apartment,room,amount,deposit_received_date,tenant_name').gte('deposit_received_date',monthStartDate).lte('deposit_received_date',monthEndDate),
+      sb.from('deposits').select('unit_id,apartment,room,amount,deposit_received_date,tenant_name,status,refund_date').gte('deposit_received_date',monthStartDate).lte('deposit_received_date',monthEndDate),
       sb.from('expenses').select('category,amount,description').eq('period_month', (monYM||'').slice(0,7)+'-01'),
       sb.from('owner_payments').select('amount,method,reference,notes').eq('period_month', (monYM||'').slice(0,7)+'-01'),
-      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2')
+      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2'),
+      sb.from('deposits').select('unit_id,apartment,room,amount,deposit_received_date,tenant_name,status,refund_date')
+        .eq('status','refunded').gte('refund_date',monthStartDate).lte('refund_date',monthEndDate)
     ]);
     var pays=pR.data||[], deps=dR.data||[], exps=eR.data||[], owns=oR.data||[], units=uR.data||[];
+    var refundedDeps = rR.data||[];
     var unitById = {};
     units.forEach(function(u){ unitById[u.id]=u; });
     deps = deps.map(function(d){
