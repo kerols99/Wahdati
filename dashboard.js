@@ -67,15 +67,20 @@ async function loadSmartDash(ym) {
       sb.from('moves').select('unit_id').eq('type','depart').gte('move_date',ym+'-01').lte('move_date',monthEnd(ym)),
       sb.from('expenses').select('amount').eq('period_month', (ym||'').slice(0,7)+'-01'),
       sb.from('owner_payments').select('amount').eq('period_month', (ym||'').slice(0,7)+'-01'),
-      // Refunded deposits this month by refund_date
-      sb.from('deposits').select('amount,refund_date')
-        .eq('status','refunded').gte('refund_date',ym+'-01').lte('refund_date',monthEnd(ym))
+      // ALL refunded — filter in JS by effective date
+      sb.from('deposits').select('amount,refund_amount,refund_date,deposit_received_date').eq('status','refunded')
     ]);
 
     var cashPays     = cashPaysRes.data||[];
     var accrualPays  = accrualPaysRes.data||[];
     var deps         = depsRes.data||[];
-    var refDepsSmart = refDepsSmartRes.data||[];
+    var allRefSmart  = refDepsSmartRes.data||[];
+    // تحديد تاريخ الإرجاع الفعلي: refund_date لو موجود، وإلا deposit_received_date
+    function refundEffectiveMonth(d) {
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7);
+    }
+    var refDepsSmart = allRefSmart.filter(function(d){ return refundEffectiveMonth(d) === ym; });
     var units        = unitsRes.data||[];
     var prevCash     = prevCashRes.data||[];
     var prevAccrual  = prevAccrualRes.data||[];
@@ -99,7 +104,7 @@ async function loadSmartDash(ym) {
     // CASH totals (payment_date based)
     var totalCashRent = cashPays.reduce(function(s,p){return s+(p.amount||0);},0);
     var totalDeps        = deps.reduce(function(s,d){ return s+(d.amount||0); },0);
-    var totalRefundSmart = refDepsSmart.reduce(function(s,d){ return s+(d.amount||0); },0);
+    var totalRefundSmart = refDepsSmart.reduce(function(s,d){ var ra=Number(d.refund_amount)||0; return s+(ra>0?ra:(d.amount||0)); },0);
     var cashTotal     = totalCashRent + totalDeps;
     var totalExpenses = exps.reduce(function(s,e){return s+(e.amount||0);},0);
     var totalOwner    = owners.reduce(function(s,o){return s+(o.amount||0);},0);
@@ -201,9 +206,8 @@ async function loadCollReport(btn) {
       sb.from('owner_payments').select('amount').gte('payment_date',monYM+'-01').lte('payment_date',monthEnd(monYM)),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
       sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,monthly_rent').eq('is_vacant',false),
-      // Refunded deposits this month by refund_date
-      sb.from('deposits').select('unit_id,apartment,room,amount,refund_date,tenant_name')
-        .eq('status','refunded').gte('refund_date',monYM+'-01').lte('refund_date',monthEnd(monYM))
+      // ALL refunded — filter by effective date in JS (handles NULL refund_date)
+      sb.from('deposits').select('unit_id,apartment,room,amount,refund_amount,refund_date,deposit_received_date,tenant_name').eq('status','refunded')
     ]);
 
     var pays    = paysRes.data||[];
@@ -212,7 +216,13 @@ async function loadCollReport(btn) {
     var owns    = ownsRes.data||[];
     var prevC   = (prevRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
     var units   = unitsRes.data||[];
-    var refDeps = refDepsRes.data||[];
+    var allRefColl = refDepsRes.data||[];
+    // تحديد تاريخ الإرجاع الفعلي: refund_date لو موجود، وإلا deposit_received_date
+    function refundEffectiveMonth(d) {
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7);
+    }
+    var refDeps = allRefColl.filter(function(d){ return refundEffectiveMonth(d) === monYM; });
     var unitMap = {};
     units.forEach(function(u){ unitMap[u.id]=u; });
     deps = deps.map(function(d){ var u = d.unit_id ? unitMap[d.unit_id] : null; return Object.assign({}, d, { apartment: d.apartment || (u && u.apartment) || '—', room: d.room || (u && u.room) || '—', tenant_name: d.tenant_name || (u && (u.tenant_name || u.tenant_name2)) || '—' }); });
@@ -225,9 +235,8 @@ async function loadCollReport(btn) {
     var totalRent  = pays.reduce(function(s,p){return s+(p.amount||0);},0);
     var totalDep   = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(d.amount||0); },0);
     // المُرتجعات في هذا الشهر بـ refund_date
-    // المرتجعات — من query منفصلة بـ refund_date (تشمل تأمينات استُلمت في شهور سابقة)
     var refundedThisMonth = refDeps;
-    var totalRefund = refundedThisMonth.reduce(function(s,d){return s+(d.amount||0);},0);
+    var totalRefund = refundedThisMonth.reduce(function(s,d){ var ra=Number(d.refund_amount)||0; return s+(ra>0?ra:(d.amount||0)); },0);
     var totalCash  = totalRent + totalDep;
     var totalExp   = exps.reduce(function(s,e){return s+(e.amount||0);},0);
     var totalOwner = owns.reduce(function(s,o){return s+(o.amount||0);},0);

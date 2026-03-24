@@ -305,17 +305,19 @@ async function calcOwnerBalance() {
       .gte('deposit_received_date', monYM+'-01')
       .lte('deposit_received_date', monthEnd(monYM));
 
-    // المُرتجعات في هذا الشهر (refund_date في الشهر الحالي)
-    var { data: refundedDeps } = await sb.from('deposits')
-      .select('amount,deposit_received_date,status,tenant_name,apartment,room,refund_date')
-      .eq('status','refunded')
-      .gte('refund_date', monYM+'-01')
-      .lte('refund_date', monthEnd(monYM));
-    refundedDeps = refundedDeps || [];
+    // كل المرتجعات — نفلترها في JS عشان نتعامل مع refund_date = NULL
+    var { data: allRefCalc } = await sb.from('deposits')
+      .select('amount,refund_amount,deposit_received_date,status,tenant_name,apartment,room,refund_date')
+      .eq('status','refunded');
+    allRefCalc = allRefCalc || [];
+    var refundedDeps = allRefCalc.filter(function(d){
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7) === monYM;
+    });
 
     var totalDepsIn  = (deps||[]).filter(function(d){ return d.status !== 'refunded'; })
       .reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
-    var totalRefunds = refundedDeps.reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
+    var totalRefunds = refundedDeps.reduce(function(s,d){ var ra=Number(d.refund_amount)||0; return s+(ra>0?ra:Number(d.amount)||0); }, 0);
     var totalDeps    = totalDepsIn;  // للـ KPI cards (تأمينات مستلمة)
 
     // Fetch expenses this month
@@ -1083,11 +1085,17 @@ async function printOwnerSettlement() {
       sb.from('expenses').select('category,amount,description').eq('period_month', (monYM||'').slice(0,7)+'-01'),
       sb.from('owner_payments').select('amount,method,reference,notes').eq('period_month', (monYM||'').slice(0,7)+'-01'),
       sb.from('units').select('id,apartment,room,tenant_name,tenant_name2'),
-      sb.from('deposits').select('unit_id,apartment,room,amount,deposit_received_date,tenant_name,status,refund_date')
-        .eq('status','refunded').gte('refund_date',monthStartDate).lte('refund_date',monthEndDate)
+      // ALL refunded — filter by effective date in JS (handles NULL refund_date)
+      sb.from('deposits').select('unit_id,apartment,room,amount,refund_amount,refund_date,deposit_received_date,tenant_name')
+        .eq('status','refunded')
     ]);
     var pays=pR.data||[], deps=dR.data||[], exps=eR.data||[], owns=oR.data||[], units=uR.data||[];
-    var refundedDeps = rR.data||[];
+    var allRefOwn = rR.data||[];
+    function refundEffectiveMonthOwn(d) {
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7);
+    }
+    var refundedDeps = allRefOwn.filter(function(d){ return refundEffectiveMonthOwn(d) === monYM; });
     var unitById = {};
     units.forEach(function(u){ unitById[u.id]=u; });
     deps = deps.map(function(d){
@@ -1101,7 +1109,7 @@ async function printOwnerSettlement() {
     var totalRent    = pays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
     var totalDeps    = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(Number(d.amount)||0); },0);
     var totalDepsIn  = totalDeps;  // alias used in summary table
-    var totalRefunds = (refundedDeps||[]).reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
+    var totalRefunds = (refundedDeps||[]).reduce(function(s,d){ var ra=Number(d.refund_amount)||0; return s+(ra>0?ra:Number(d.amount)||0); }, 0);
     var totalExp     = exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
     var totalOwn     = owns.reduce(function(s,o){return s+(Number(o.amount)||0);},0);
     var balance      = totalRent + totalDeps - totalRefunds - totalExp - totalOwn;
@@ -1377,7 +1385,46 @@ async function printOwnerSettlement() {
 }
 window.printOwnerSettlement = printOwnerSettlement;
 
-window.autoFillRent=autoFillRent; window.calcOwnerBalance=calcOwnerBalance; window.autoFillDepDate=autoFillDepDate; window.saveRent=saveRent; window.saveExp=saveExp; window.saveOwner=saveOwner; window.saveDep=saveDep; window.setPayTenant=setPayTenant; window.askWhoPayment=askWhoPayment; window.askWhoWA=askWhoWA; window.togglePayHistory=togglePayHistory; window.editDeposit=editDeposit; window.saveEditDeposit=saveEditDeposit; window.deleteDeposit=deleteDeposit; window.editPayment=editPayment; window.saveEditPayment=saveEditPayment; window.deletePayment=deletePayment;
+// ══ QUICK REFUND DEPOSIT ══
+// Opens editDeposit modal pre-set to 'refunded' status + today as refund_date
+async function quickRefundDeposit(depId) {
+  try {
+    var { data: d } = await sb.from('deposits').select('*').eq('id', depId).single();
+    if(!d) { toast(LANG==='ar'?'لم يتم العثور على التأمين':'Deposit not found','err'); return; }
+
+    var modal = document.createElement('div');
+    modal.id = 'edit-dep-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+
+    var today = new Date().toISOString().slice(0,10);
+    var rdVal = (d.deposit_received_date||'').slice(0,10);
+    var curAmt = d.amount||0;
+
+    modal.innerHTML = '<div style="background:var(--surf);border-radius:20px;padding:20px;width:100%;max-width:480px">'
+      + '<div style="font-weight:700;font-size:1rem;margin-bottom:4px">↩️ '+(LANG==='ar'?'استرداد التأمين':'Refund Deposit')+'</div>'
+      + '<div style="font-size:.72rem;color:var(--muted);margin-bottom:16px">'+(LANG==='ar'?'المستأجر: ':'Tenant: ')+(d.tenant_name||'—')+'</div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'مبلغ الاسترداد (AED)':'Refund Amount (AED)')+'</label>'
+      + '<input class="inp" id="ed-amt" type="number" inputmode="numeric" value="'+curAmt+'"></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'تاريخ الاستلام الأصلي':'Original Received Date')+'</label>'
+      + '<input class="inp" id="ed-date" type="date" value="'+rdVal+'"></div>'
+      + '<input type="hidden" id="ed-status" value="refunded">'
+      + '<div class="fld"><label>'+(LANG==='ar'?'تاريخ الإرجاع':'Refund Date')+'</label>'
+      + '<input class="inp" id="ed-refund-date" type="date" value="'+today+'">'
+      + '<small style="display:block;color:var(--muted);font-size:.65rem;margin-top:3px">'+(LANG==='ar'?'تاريخ إرجاع المبلغ للمستأجر':'Date money was returned to tenant')+'</small></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'ملاحظات':'Notes')+'</label>'
+      + '<input class="inp" id="ed-notes" value="'+(d.notes||'')+'" placeholder="'+(LANG==='ar'?'اختياري':'Optional')+'"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:16px">'
+      + '<button onclick="saveEditDeposit(''+depId+'')" style="flex:1;padding:13px;background:var(--red);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.9rem;font-weight:700;cursor:pointer">↩️ '+(LANG==='ar'?'تأكيد الاسترداد':'Confirm Refund')+'</button>'
+      + '<button onclick="document.getElementById('edit-dep-modal').remove()" style="padding:13px 18px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--muted);font-family:inherit;cursor:pointer">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
+      + '</div>'
+      + '</div>';
+
+    modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+    document.body.appendChild(modal);
+  } catch(e){ toast('خطأ: '+e.message,'err'); }
+}
+
+window.autoFillRent=autoFillRent; window.calcOwnerBalance=calcOwnerBalance; window.autoFillDepDate=autoFillDepDate; window.saveRent=saveRent; window.saveExp=saveExp; window.saveOwner=saveOwner; window.saveDep=saveDep; window.setPayTenant=setPayTenant; window.askWhoPayment=askWhoPayment; window.askWhoWA=askWhoWA; window.togglePayHistory=togglePayHistory; window.editDeposit=editDeposit; window.quickRefundDeposit=quickRefundDeposit; window.saveEditDeposit=saveEditDeposit; window.deleteDeposit=deleteDeposit; window.editPayment=editPayment; window.saveEditPayment=saveEditPayment; window.deletePayment=deletePayment;
 // ══════════════════════════════════════════════════════
 // BULK QUICK PAY — show all unpaid units in one list
 // ══════════════════════════════════════════════════════
