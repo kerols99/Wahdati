@@ -300,12 +300,23 @@ async function calcOwnerBalance() {
       .select('amount').gte('payment_date', monYM+'-01').lte('payment_date', monthEnd(monYM));
 
     // RULE: deposit cash = deposit_received_date (cash basis, NOT start_date)
-    var { data: deps } = await sb.from('deposits').select('amount,deposit_received_date,status')
+    var { data: deps } = await sb.from('deposits')
+      .select('amount,deposit_received_date,status,tenant_name,apartment,room,refund_date')
       .gte('deposit_received_date', monYM+'-01')
       .lte('deposit_received_date', monthEnd(monYM));
 
-    var totalDeps = (deps||[]).filter(function(d){ return d.status !== 'refunded'; })
+    // المُرتجعات في هذا الشهر (refund_date في الشهر الحالي)
+    var { data: refundedDeps } = await sb.from('deposits')
+      .select('amount,deposit_received_date,status,tenant_name,apartment,room,refund_date')
+      .eq('status','refunded')
+      .gte('refund_date', monYM+'-01')
+      .lte('refund_date', monthEnd(monYM));
+    refundedDeps = refundedDeps || [];
+
+    var totalDepsIn  = (deps||[]).filter(function(d){ return d.status !== 'refunded'; })
       .reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
+    var totalRefunds = refundedDeps.reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
+    var totalDeps    = totalDepsIn;  // للـ KPI cards (تأمينات مستلمة)
 
     // Fetch expenses this month
     var { data: exps } = await sb.from('expenses')
@@ -798,12 +809,19 @@ async function saveEditDeposit(depId) {
     if(!amt){ toast(LANG==='ar'?'المبلغ مطلوب':'Amount required','err'); return; }
     if(!date){ toast(LANG==='ar'?'التاريخ مطلوب':'Date required','err'); return; }
 
-    var { error } = await sb.from('deposits').update({
+    var updateData = {
       amount: amt,
       deposit_received_date: date,
       status: status,
       notes: notes,
-    }).eq('id', depId);
+    };
+    // لو مرتجع → احفظ تاريخ الإرجاع تلقائياً
+    if(status === 'refunded') {
+      updateData.refund_date = new Date().toISOString().slice(0,10);
+    } else {
+      updateData.refund_date = null;
+    }
+    var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
 
     if(error) throw error;
     toast(LANG==='ar'?'تم التعديل ✓':'Updated ✓','ok');
@@ -1076,7 +1094,7 @@ async function printOwnerSettlement() {
     var totalDeps = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(Number(d.amount)||0); },0);
     var totalExp  = exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
     var totalOwn  = owns.reduce(function(s,o){return s+(Number(o.amount)||0);},0);
-    var balance   = totalRent + totalDeps - totalExp - totalOwn;
+    var balance   = totalRent + totalDeps - totalRefunds - totalExp - totalOwn;
 
     var row = function(lbl,val,col){
       return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee">'
@@ -1135,6 +1153,13 @@ async function printOwnerSettlement() {
       if(!depsByApt[apt]) depsByApt[apt] = [];
       depsByApt[apt].push(d);
     });
+    // المُرتجعات مقسّمة على الشقة
+    var refundsByApt = {};
+    refundedDeps.forEach(function(d){
+      var apt = String(d.apartment||'?');
+      if(!refundsByApt[apt]) refundsByApt[apt] = [];
+      refundsByApt[apt].push(d);
+    });
 
     // All apt numbers (pays + deps)
     var allAptKeys = Array.from(new Set(Object.keys(paysByApt).concat(Object.keys(depsByApt))));
@@ -1147,6 +1172,9 @@ async function printOwnerSettlement() {
         return ar.localeCompare(br,undefined,{numeric:true,sensitivity:'base'});
       });
       var aptDeps = (depsByApt[apt]||[]).slice().sort(function(a,b){
+        return String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true,sensitivity:'base'});
+      });
+      var aptRefunds = (refundsByApt[apt]||[]).slice().sort(function(a,b){
         return String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true,sensitivity:'base'});
       });
       var aptPayTotal = aptPays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
@@ -1199,6 +1227,26 @@ async function printOwnerSettlement() {
                 + tdS(esc(d.tenant_name||'—'),'color:#555')
                 + tdS(fmtAmt(d.amount||0),'font-weight:700;color:#b45309')
                 + tdS(esc((d.deposit_received_date||'').slice(0,10)),'color:#777;font-size:11px')
+                + '</tr>';
+            }).join('')
+          +'</tbody></table>';
+      }
+      // صفوف المرتجعات في الشقة
+      if(aptRefunds.length) {
+        html += '<div style="font-size:11px;font-weight:700;color:#c0392b;padding:8px 10px 4px;border-top:2px solid #f0a0a0;border-bottom:1px solid #fde8e8;background:#fff8f8">↩️ تأمينات مُرتجعة ('+aptRefunds.length+')</div>'
+          +'<table style="width:100%;border-collapse:collapse;background:#fff8f8">'
+          +'<thead><tr style="background:#fff0f0">'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f0a0a0">الغرفة</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f0a0a0">الاسم</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f0a0a0">المُرتجع</th>'
+          +'<th style="padding:7px 10px;text-align:right;font-size:11px;font-weight:700;border-bottom:1.5px solid #f0a0a0">تاريخ الإرجاع</th>'
+          +'</tr></thead><tbody>'
+          + aptRefunds.map(function(d){
+              return '<tr>'
+                + tdS('<b>'+esc(String(d.room||''))+'</b>')
+                + tdS(esc(d.tenant_name||'—'),'color:#555')
+                + tdS('- '+fmtAmt(d.amount||0),'font-weight:700;color:#c0392b')
+                + tdS(esc((d.refund_date||'').slice(0,10)),'color:#777;font-size:11px')
                 + '</tr>';
             }).join('')
           +'</tbody></table>';
@@ -1269,9 +1317,13 @@ async function printOwnerSettlement() {
       +'<td style="padding:10px 14px;font-size:13px">✅ إيجار محصّل</td>'
       +'<td style="padding:10px 14px;font-size:13px;font-weight:800;color:#166534;text-align:left">'+fmtAmt(totalRent)+'</td>'
       +'</tr>'
-      +(totalDeps>0?'<tr style="border-bottom:1px solid #fef3e8">'
+      +(totalDepsIn>0?'<tr style="border-bottom:1px solid #fef3e8">'
       +'<td style="padding:10px 14px;font-size:13px">🔒 تأمينات مستلمة</td>'
-      +'<td style="padding:10px 14px;font-size:13px;font-weight:800;color:#b45309;text-align:left">'+fmtAmt(totalDeps)+'</td>'
+      +'<td style="padding:10px 14px;font-size:13px;font-weight:800;color:#b45309;text-align:left">'+fmtAmt(totalDepsIn)+'</td>'
+      +'</tr>':'')
+      +(totalRefunds>0?'<tr style="border-bottom:1px solid #fef3e8;background:#fff8f8">'
+      +'<td style="padding:10px 14px;font-size:13px">↩️ تأمينات مُرتجعة</td>'
+      +'<td style="padding:10px 14px;font-size:13px;font-weight:800;color:#c0392b;text-align:left">- '+fmtAmt(totalRefunds)+'</td>'
       +'</tr>':'')
       +(totalExp>0?'<tr style="border-bottom:1px solid #fff0f0">'
       +'<td style="padding:10px 14px;font-size:13px">💸 مصاريف</td>'

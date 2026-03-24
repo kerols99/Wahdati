@@ -45,7 +45,7 @@ async function loadMonthly(btn) {
       sb.from('expenses').select('amount,category,description,receipt_no,period_month').eq('period_month', (mon||'').slice(0,7)+'-01'),
       sb.from('owner_payments').select('amount,period_month,method').eq('period_month', (mon||'').slice(0,7)+'-01'),
       // Deposits: all records (filtered in JS by deposit_received_date)
-      sb.from('deposits').select('unit_id,amount,deposit_received_date,status')
+      sb.from('deposits').select('unit_id,amount,deposit_received_date,status,refund_date,tenant_name,apartment,room')
     ]);
     var units = unitsRes.data||[];
     var pays  = paysRes.data||[];
@@ -94,6 +94,10 @@ async function loadMonthly(btn) {
       totalRentColl += paidMap[u.id]||0;   // rent collected only
       totalDeps     += depMap[u.id]||0;    // deposit collected this month
     });
+    // المُرتجعات في هذا الشهر (refund_date في الشهر الحالي)
+    var totalRefunds = deps.filter(function(d){
+      return d.status === 'refunded' && (d.refund_date||'').slice(0,7) === monYM;
+    }).reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
     exps.forEach(function(e){ totalExp   += e.amount||0; });
     owns.forEach(function(o){ totalOwner += o.amount||0; });
 
@@ -247,7 +251,7 @@ async function loadMonthly(btn) {
     });
 
     // ── Grand Total — clear colored summary ──
-    var netTotal = totalColl - totalExp - totalOwner;
+    var netTotal = totalColl - totalRefunds - totalExp - totalOwner;
     var collPct  = totalRent > 0 ? Math.round(totalRentColl / totalRent * 100) : 0;
     var pctColor = collPct>=90?'var(--green)':collPct>=60?'var(--amber)':'var(--red)';
 
@@ -269,6 +273,7 @@ async function loadMonthly(btn) {
       +sumRow('🎯', LANG==='ar'?'الإيجار المستهدف':'Target Rent',        totalRent.toLocaleString(),             'var(--text2)')
       +sumRow('✅', LANG==='ar'?'إيجار محصّل':'Rent Collected',           totalRentColl.toLocaleString(),         'var(--green)')
       +(totalDeps>0?sumRow('🔒', LANG==='ar'?'تأمينات محصّلة':'Deposits',totalDeps.toLocaleString(),             'var(--accent)'):'')
+      +(totalRefunds>0?sumRow('↩️', LANG==='ar'?'تأمينات مُرتجعة':'Dep. Refunded','- '+totalRefunds.toLocaleString(), 'var(--red)'):'')
       +sumRow('💵', LANG==='ar'?'إجمالي الكاش':'Total Cash',             totalColl.toLocaleString(),             'var(--green)', true)
       +sumRow('❌', LANG==='ar'?'إيجار غير محصّل':'Uncollected',         (totalRent-totalRentColl).toLocaleString(),'var(--red)')
       +(totalExp>0?sumRow('💸', LANG==='ar'?'المصاريف':'Expenses',        totalExp.toLocaleString(),              'var(--amber)'):'')
