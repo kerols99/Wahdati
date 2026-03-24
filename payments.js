@@ -1095,6 +1095,7 @@ async function printOwnerSettlement() {
     });
     var totalRent    = pays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
     var totalDeps    = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(Number(d.amount)||0); },0);
+    var totalDepsIn  = totalDeps;  // alias used in summary table
     var totalRefunds = (refundedDeps||[]).reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
     var totalExp     = exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
     var totalOwn     = owns.reduce(function(s,o){return s+(Number(o.amount)||0);},0);
