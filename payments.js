@@ -1090,11 +1090,12 @@ async function printOwnerSettlement() {
         tenant_name: d.tenant_name || (u && (u.tenant_name || u.tenant_name2)) || ''
       });
     });
-    var totalRent = pays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
-    var totalDeps = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(Number(d.amount)||0); },0);
-    var totalExp  = exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
-    var totalOwn  = owns.reduce(function(s,o){return s+(Number(o.amount)||0);},0);
-    var balance   = totalRent + totalDeps - totalRefunds - totalExp - totalOwn;
+    var totalRent    = pays.reduce(function(s,p){return s+(Number(p.amount)||0);},0);
+    var totalDeps    = deps.reduce(function(s,d){ if(d.status==='refunded') return s; return s+(Number(d.amount)||0); },0);
+    var totalRefunds = (refundedDeps||[]).reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
+    var totalExp     = exps.reduce(function(s,e){return s+(Number(e.amount)||0);},0);
+    var totalOwn     = owns.reduce(function(s,o){return s+(Number(o.amount)||0);},0);
+    var balance      = totalRent + totalDeps - totalRefunds - totalExp - totalOwn;
 
     var row = function(lbl,val,col){
       return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee">'
