@@ -799,6 +799,9 @@ async function editDeposit(depId) {
       + '<div class="fld" id="ed-refund-date-wrap" style="display:'+(d.status==='refunded'?'block':'none')+'"><label>'+(LANG==='ar'?'تاريخ الإرجاع':'Refund Date')+'</label>'
       + '<input class="inp" id="ed-refund-date" type="date" value="'+((d.refund_date||'').slice(0,10))+'" placeholder="YYYY-MM-DD">'
       + '<small style="display:block;color:var(--muted);font-size:.65rem;margin-top:3px">'+(LANG==='ar'?'تاريخ إرجاع المبلغ للمستأجر':'Date refund was given to tenant')+'</small></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'المبلغ المخصوم (AED)':'Deduction Amount')+'</label>'
+      + '<input class="inp" id="ed-ded-amt" type="number" inputmode="numeric" value="'+(d.deduction_amount||0)+'" placeholder="0">'
+      + '<small style="display:block;color:var(--muted);font-size:.65rem;margin-top:3px">'+(LANG==='ar'?'المبلغ المخصوم من التأمين (إصلاحات/أضرار)':'Amount deducted for repairs/damages')+'</small></div>'
       + '<div class="fld"><label>'+(LANG==='ar'?'ملاحظات':'Notes')+'</label>'
       + '<input class="inp" id="ed-notes" value="'+(d.notes||'')+'" placeholder="'+(LANG==='ar'?'اختياري':'Optional')+'"></div>'
       + '<div style="display:flex;gap:8px;margin-top:16px">'
@@ -831,10 +834,14 @@ async function saveEditDeposit(depId) {
     if(status === 'refunded') {
       var rdInput = document.getElementById('ed-refund-date');
       updateData.refund_date = (rdInput && rdInput.value) ? rdInput.value : new Date().toISOString().slice(0,10);
-      updateData.refund_amount = amt;
+      var dedEl = document.getElementById('ed-ded-amt');
+      var dedAmt = dedEl ? Number(dedEl.value||0) : 0;
+      updateData.deduction_amount = dedAmt;
+      updateData.refund_amount = amt - dedAmt;
     } else {
       updateData.refund_date = null;
       updateData.refund_amount = 0;
+      updateData.deduction_amount = 0;
     }
     var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
 

@@ -68,14 +68,19 @@ async function loadSmartDash(ym) {
       sb.from('expenses').select('amount').eq('period_month', (ym||'').slice(0,7)+'-01'),
       sb.from('owner_payments').select('amount').eq('period_month', (ym||'').slice(0,7)+'-01'),
       // Refunded deposits this month by refund_date
-      sb.from('deposits').select('amount,refund_date')
-        .eq('status','refunded').gte('refund_date',ym+'-01').lte('refund_date',monthEnd(ym))
+      sb.from('deposits').select('amount,refund_amount,refund_date,apartment,room,tenant_name,deposit_received_date')
+        .eq('status','refunded')
     ]);
 
     var cashPays     = cashPaysRes.data||[];
     var accrualPays  = accrualPaysRes.data||[];
     var deps         = depsRes.data||[];
-    var refDepsSmart = refDepsSmartRes.data||[];
+    var allRefSmartData = refDepsSmartRes.data||[];
+    function refEffMonth(d) {
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7);
+    }
+    var refDepsSmart = allRefSmartData.filter(function(d){ return refEffMonth(d) === ym; });
     var units        = unitsRes.data||[];
     var prevCash     = prevCashRes.data||[];
     var prevAccrual  = prevAccrualRes.data||[];
@@ -212,7 +217,12 @@ async function loadCollReport(btn) {
     var owns    = ownsRes.data||[];
     var prevC   = (prevRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
     var units   = unitsRes.data||[];
-    var refDeps = refDepsRes.data||[];
+    var allRefCollData = refDepsRes.data||[];
+    function refEffMonthColl(d) {
+      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
+      return (dt||'').slice(0,7);
+    }
+    var refDeps = allRefCollData.filter(function(d){ return refEffMonthColl(d) === monYM; });
     var unitMap = {};
     units.forEach(function(u){ unitMap[u.id]=u; });
     deps = deps.map(function(d){ var u = d.unit_id ? unitMap[d.unit_id] : null; return Object.assign({}, d, { apartment: d.apartment || (u && u.apartment) || '—', room: d.room || (u && u.room) || '—', tenant_name: d.tenant_name || (u && (u.tenant_name || u.tenant_name2)) || '—' }); });
