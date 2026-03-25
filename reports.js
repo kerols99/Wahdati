@@ -49,23 +49,17 @@ async function loadMonthly(btn) {
       // Deposits received this month
       sb.from('deposits').select('unit_id,amount,deposit_received_date,status,refund_date,tenant_name,apartment,room')
         .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
-      // ALL refunded deposits — filter by effective date in JS (handles NULL refund_date)
-      sb.from('deposits').select('unit_id,amount,refund_amount,refund_date,deposit_received_date,tenant_name,apartment,room')
-        .eq('status','refunded')
+      // Refunded deposits this month — by refund_date (may have been received in prior months)
+      sb.from('deposits').select('unit_id,amount,refund_date,tenant_name,apartment,room')
+        .eq('status','refunded').gte('refund_date', monStart).lte('refund_date', monEnd)
     ]);
     var units        = unitsRes.data||[];
     var pays         = paysRes.data||[];
     var exps         = expsRes.data||[];
     var owns         = ownsRes.data||[];
     var deps         = depsRes.data||[];
-    var allRefunded  = refundedDepsRes.data||[];
+    var refundedDeps = refundedDepsRes.data||[];
     var monYM = mon.slice(0,7);
-    // تحديد تاريخ الإرجاع الفعلي: refund_date لو موجود، وإلا deposit_received_date
-    function refundEffectiveMonth(d) {
-      var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
-      return (dt||'').slice(0,7);
-    }
-    var refundedDeps = allRefunded.filter(function(d){ return refundEffectiveMonth(d) === monYM; });
 
     // ── Maps ──
     // paidMap: rent paid this month per unit
@@ -107,7 +101,8 @@ async function loadMonthly(btn) {
       totalRentColl += paidMap[u.id]||0;   // rent collected only
       totalDeps     += depMap[u.id]||0;    // deposit collected this month
     });
-    var totalRefunds = refundedDeps.reduce(function(s,d){ var ra=Number(d.refund_amount)||0; return s+(ra>0?ra:Number(d.amount)||0); }, 0);
+    // المُرتجعات في هذا الشهر — query منفصلة بـ refund_date
+    var totalRefunds = refundedDeps.reduce(function(s,d){ return s+(Number(d.amount)||0); }, 0);
     exps.forEach(function(e){ totalExp   += e.amount||0; });
     owns.forEach(function(o){ totalOwner += o.amount||0; });
 

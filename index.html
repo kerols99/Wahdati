@@ -356,13 +356,13 @@
 <div class="fld"><label id="lbl-damt">المبلغ (AED)</label><input class="inp" id="d-amt" inputmode="numeric" placeholder="0" type="number"/></div>
 <div class="fld"><label id="lbl-ddate">تاريخ الاستلام <span style="color:var(--red)">*</span></label><input class="inp" id="d-date" type="date" required/></div>
 <div class="fld"><label id="lbl-dstatus">الحالة</label>
-<select class="sel" id="d-status" onchange="var w=document.getElementById('d-refund-date-new-wrap');if(w)w.style.display=this.value==='refunded'?'block':'none'">
+<select class="sel" id="d-status">
 <option value="held">محتجز (مستأجر داخل)</option>
 <option value="refunded">مُرتجع (خرج)</option>
 <option value="forfeited">مُصادر</option>
 </select>
 </div>
-<div class="fld" id="d-refund-date-new-wrap" style="display:none"><label>تاريخ الإرجاع</label><input class="inp" id="d-refund-date-new" type="date"/><small style="display:block;color:var(--muted);font-size:.65rem;margin-top:3px">تاريخ إرجاع المبلغ للمستأجر</small></div><div class="fld"><label id="lbl-dref">المبلغ المُرتجع</label><input class="inp" id="d-ref" inputmode="numeric" placeholder="0" type="number"/></div>
+<div class="fld"><label id="lbl-dref">المبلغ المُرتجع</label><input class="inp" id="d-ref" inputmode="numeric" placeholder="0" type="number"/></div>
 <div class="fld"><label id="lbl-dded">الخصم</label><input class="inp" id="d-ded" inputmode="numeric" placeholder="0" type="number"/></div>
 <div class="fld"><label id="lbl-dwhy">سبب الخصم</label><input class="inp" id="d-why" placeholder="اختياري"/></div>
 <div class="fld"><label id="lbl-dnotes">ملاحظات</label><input class="inp" id="d-notes" placeholder="اختياري"/></div>
