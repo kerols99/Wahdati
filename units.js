@@ -370,6 +370,7 @@ var now = new Date();
         + (d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+d.notes+'</div>':'')
         + '</div>'
         + '<div style="display:flex;gap:5px;flex-shrink:0;margin-right:4px">'
+        + (d.status==='held' ? '<button onclick="quickRefundDeposit(\'' + d.id + '\')" style="padding:5px 9px;background:var(--red)22;border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.72rem;cursor:pointer;font-family:inherit" title="'+(LANG==='ar'?'استرداد التأمين':'Refund')+'">↩️</button>' : '')
         + '<button onclick="editDeposit(\'' + d.id + '\')" style="padding:5px 9px;background:var(--accent)22;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:.72rem;cursor:pointer;font-family:inherit">✏️</button>'
         + '<button onclick="deleteDeposit(\'' + d.id + '\',\'' + unitId + '\')" style="padding:5px 9px;background:var(--red)22;border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.72rem;cursor:pointer;font-family:inherit">🗑️</button>'
         + '</div>'
