@@ -1411,8 +1411,8 @@ async function quickRefundDeposit(depId) {
       + '<div class="fld"><label>'+(LANG==='ar'?'ملاحظات':'Notes')+'</label>'
       + '<input class="inp" id="ed-notes" value="'+(d.notes||'')+'" placeholder="'+(LANG==='ar'?'اختياري':'Optional')+'"></div>'
       + '<div style="display:flex;gap:8px;margin-top:16px">'
-      + '<button onclick="saveEditDeposit(''+depId+'')" style="flex:1;padding:13px;background:var(--red);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.9rem;font-weight:700;cursor:pointer">↩️ '+(LANG==='ar'?'تأكيد الاسترداد':'Confirm Refund')+'</button>'
-      + '<button onclick="document.getElementById('edit-dep-modal').remove()" style="padding:13px 18px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--muted);font-family:inherit;cursor:pointer">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
+      + '<button onclick="saveEditDeposit(\'' + depId + '\')" style="flex:1;padding:13px;background:var(--red);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.9rem;font-weight:700;cursor:pointer">↩️ '+(LANG==='ar'?'تأكيد الاسترداد':'Confirm Refund')+'</button>'
+      + '<button onclick="document.getElementById(\'edit-dep-modal\').remove()" style="padding:13px 18px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--muted);font-family:inherit;cursor:pointer">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
       + '</div></div>';
     modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
     document.body.appendChild(modal);
