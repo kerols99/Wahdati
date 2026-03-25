@@ -15,13 +15,15 @@ async function autoFillDepDate() {
 
     try {
       var { data: u } = await sb.from('units')
-        .select('id,start_date,tenant_name')
-        .eq('apartment', parseInt(apt)).eq('room', room).maybeSingle();
+        .select('id,start_date,tenant_name,deposit,monthly_rent')
+        .eq('apartment', String(apt)).eq('room', String(room)).maybeSingle();
       if(!u) return;
 
-      // Auto-fill date + name
+      // Auto-fill date + name (always overwrite if DB has value)
       if(dateEl && !dateEl.value && u.start_date) dateEl.value = u.start_date.slice(0,10);
-      if(nameEl && !nameEl.value && u.tenant_name) nameEl.value = u.tenant_name;
+      if(nameEl && u.tenant_name) nameEl.value = u.tenant_name;
+      var amtEl = document.getElementById('d-amt');
+      if(amtEl && !amtEl.value && u.deposit) amtEl.value = u.deposit;
 
       // ── Check if deposit already exists ──
       if(u.id) {
