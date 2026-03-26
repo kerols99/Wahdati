@@ -458,6 +458,18 @@ async function saveMoveEntry(type, btn){
   var phone   = (document.getElementById('me-phone')||{}).value||'';
   var unitId  = (document.getElementById('me-selected-unit-id')||{}).value||'';
   if(!name || !apt || !room) { toast(t('nameRequired'),'err'); return; }
+  // Check for duplicate departure
+  var { data: existingDep } = await sb.from('moves')
+    .select('id')
+    .eq('type','depart')
+    .eq('apartment', parseInt(apt))
+    .eq('room', parseInt(room))
+    .eq('status','pending')
+    .limit(1);
+  if(existingDep && existingDep.length > 0) {
+    toast(LANG==='ar'?'⚠️ هذه الوحدة مسجّلة بالفعل في قائمة المغادرين':'⚠️ Unit already in departure list','err');
+    return;
+  }
   var orig = btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try {
     var payload = {
