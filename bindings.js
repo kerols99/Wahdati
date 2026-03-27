@@ -13,6 +13,7 @@
         if(window.switchTab) window.switchTab(el.dataset.tabTarget, el);
       // Auto-load bulk list when switching to bulk tab
       if(el.dataset.tabTarget === 'tBulk' && window.loadBulkPay) setTimeout(loadBulkPay, 100);
+      if(el.dataset.tabTarget === 'tInternal' && window.loadInternalTransfers) setTimeout(loadInternalTransfers, 100);
       // Auto-load comparison when switching to compare tab
       if(el.dataset.tabTarget === 'rCompare') {
         var yEl = document.getElementById('rcmp-year');

@@ -932,6 +932,61 @@ function itSelectUnit(mode, id, label) {
   }
 }
 
+
+// ══ LOAD INTERNAL TRANSFERS FROM DB ══
+async function loadInternalTransfers() {
+  var list = document.getElementById('internal-transfer-list');
+  if(!list) return;
+  list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">⏳ جاري التحميل...</div>';
+
+  try {
+    var { data: records } = await sb.from('internal_transfers')
+      .select('*')
+      .order('created_at', {ascending:false})
+      .limit(20);
+
+    if(!records || !records.length) {
+      list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:.82rem">لا توجد نقليات داخلية مسجّلة</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    records.forEach(function(rec) {
+      var f = rec.from_snapshot || {};
+      var t = rec.to_snapshot || {};
+      var item = document.createElement('div');
+      item.style.cssText = 'background:var(--surf2);border-radius:12px;padding:12px;margin-bottom:8px;border-right:4px solid var(--green)';
+      item.dataset.transferId = rec.id;
+
+      var undoBtn = document.createElement('button');
+      undoBtn.textContent = '↩️ تراجع';
+      undoBtn.style.cssText = 'padding:6px 10px;background:var(--amber)22;border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0';
+      undoBtn.addEventListener('click', function(){ undoInternalTransfer(undoBtn); });
+
+      var info = document.createElement('div');
+      info.innerHTML = '<div style="font-weight:700">🔄 '+(f.tenant_name||'—')+'</div>'
+        + '<div style="font-size:.75rem;color:var(--muted)">شقة '+f.apartment+' غرفة '+f.room
+        + ' ← شقة '+t.apartment+' غرفة '+t.room+'</div>'
+        + '<div style="font-size:.7rem;color:var(--muted)">📅 '+(rec.transfer_date||rec.created_at||'').slice(0,10)+'</div>';
+
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px';
+      row.appendChild(info);
+      row.appendChild(undoBtn);
+      item.appendChild(row);
+      // Also add undo button below for mobile visibility
+      var undoBtn2 = document.createElement('button');
+      undoBtn2.textContent = '↩️ تراجع عن النقل';
+      undoBtn2.style.cssText = 'margin-top:8px;width:100%;padding:9px;background:var(--amber)22;border:1px solid var(--amber);border-radius:10px;color:var(--amber);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit';
+      undoBtn2.addEventListener('click', function(){ undoInternalTransfer(undoBtn2); });
+      item.appendChild(undoBtn2);
+      list.appendChild(item);
+    });
+  } catch(e) {
+    list.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">خطأ: '+e.message+'</div>';
+  }
+}
+
 window.openInternalTransferModal = openInternalTransferModal;
 window.itFilterUnits = itFilterUnits;
 window.itSelectUnit  = itSelectUnit;
@@ -960,7 +1015,7 @@ async function executeInternalTransfer() {
     var { data: toUnit, error: e2 } = await sb.from('units').select('*').eq('id', toId).single();
     if(e2) throw e2;
 
-    // 1. Save snapshot in unit_history
+    // 1. Save snapshots in unit_history + internal_transfers
     await sb.from('unit_history').insert({
       unit_id: fromId,
       apartment: parseInt(fromUnit.apartment)||0,
@@ -980,6 +1035,39 @@ async function executeInternalTransfer() {
       snapshot_type: 'internal_transfer_out',
       recorded_by: ME ? ME.id : null
     });
+    // Save snapshot for toUnit (displaced tenant) in unit_history
+    if(toUnit.tenant_name) {
+      await sb.from('unit_history').insert({
+        unit_id: toId,
+        apartment: parseInt(toUnit.apartment)||0,
+        room: parseInt(toUnit.room)||0,
+        tenant_name: toUnit.tenant_name,
+        tenant_name2: toUnit.tenant_name2,
+        phone: toUnit.phone,
+        phone2: toUnit.phone2,
+        monthly_rent: toUnit.monthly_rent,
+        rent1: toUnit.rent1,
+        rent2: toUnit.rent2,
+        deposit: toUnit.deposit,
+        persons_count: toUnit.persons_count,
+        start_date: toUnit.start_date,
+        end_date: date,
+        notes: 'تم استبداله بنقل داخلي — '+fromUnit.tenant_name+' من شقة '+fromUnit.apartment+' غرفة '+fromUnit.room+(notes?' — '+notes:''),
+        snapshot_type: 'internal_transfer_displaced',
+        recorded_by: ME ? ME.id : null
+      });
+    }
+    // Save to internal_transfers for persistent undo
+    var { data: transferRec } = await sb.from('internal_transfers').insert({
+      from_unit_id: fromId,
+      to_unit_id: toId,
+      from_snapshot: fromUnit,
+      to_snapshot: toUnit,
+      transfer_date: date,
+      notes: notes||null,
+      created_by: ME ? ME.id : null
+    }).select('id').single();
+    var transferId = transferRec ? transferRec.id : null;
 
     // 2. Copy tenant to new unit
     var rentToSet = newRent ? Number(newRent) : fromUnit.monthly_rent;
@@ -1025,10 +1113,17 @@ async function executeInternalTransfer() {
     if(list) {
       var item = document.createElement('div');
       item.style.cssText = 'background:var(--surf2);border-radius:12px;padding:12px;margin-bottom:8px;border-right:4px solid var(--green)';
-      item.innerHTML = '<div style="font-weight:700">🔄 '+(fromUnit.tenant_name||'—')+'</div>'
+      // Store transfer ID for persistent undo
+      item.dataset.transferId = transferId || '';
+      item.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        + '<div>'
+        + '<div style="font-weight:700">🔄 '+(fromUnit.tenant_name||'—')+'</div>'
         + '<div style="font-size:.75rem;color:var(--muted)">شقة '+fromUnit.apartment+' غرفة '+fromUnit.room
         + ' ← شقة '+toUnit.apartment+' غرفة '+toUnit.room+'</div>'
-        + '<div style="font-size:.7rem;color:var(--muted)">📅 '+date+'</div>';
+        + '<div style="font-size:.7rem;color:var(--muted)">📅 '+date+'</div>'
+        + '</div>'
+        + '<button onclick="undoInternalTransfer(this)" style="padding:6px 10px;background:var(--amber)22;border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0;margin-right:4px">↩️ تراجع</button>'
+        + '</div>';
       var empty = list.querySelector('[style*="text-align:center"]');
       if(empty) list.innerHTML = '';
       list.insertBefore(item, list.firstChild);
@@ -1045,4 +1140,85 @@ async function executeInternalTransfer() {
   }
 }
 
+
+// ══ UNDO INTERNAL TRANSFER ══
+async function undoInternalTransfer(btn) {
+  var item = btn ? btn.closest('[data-transfer-id]') : null;
+  var transferId = item ? item.dataset.transferId : null;
+  if(!transferId) { toast(LANG==='ar'?'لا يمكن التراجع — لا يوجد سجل':'Cannot undo','err'); return; }
+
+  // Load transfer record from DB
+  var { data: rec, error: recErr } = await sb.from('internal_transfers')
+    .select('*').eq('id', transferId).single();
+  if(recErr || !rec) { toast(LANG==='ar'?'لم يتم العثور على سجل النقل':'Transfer record not found','err'); return; }
+
+  var data = { fromId: rec.from_unit_id, toId: rec.to_unit_id, fromSnapshot: rec.from_snapshot, toSnapshot: rec.to_snapshot };
+
+  if(!confirm(LANG==='ar'?'هل تريد التراجع عن هذا النقل؟ سيتم إرجاع البيانات كما كانت.':'Undo this transfer? All data will be reverted.')) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳';
+
+  try {
+    var f = data.fromSnapshot;
+    var t = data.toSnapshot;
+
+    // Restore source unit (fromUnit) with original data
+    await sb.from('units').update({
+      tenant_name: f.tenant_name,
+      tenant_name2: f.tenant_name2,
+      phone: f.phone,
+      phone2: f.phone2,
+      language: f.language,
+      persons_count: f.persons_count,
+      monthly_rent: f.monthly_rent,
+      rent1: f.rent1||0,
+      rent2: f.rent2||0,
+      deposit: f.deposit||0,
+      start_date: f.start_date,
+      is_vacant: f.is_vacant,
+      unit_status: f.unit_status,
+      notes: f.notes||null
+    }).eq('id', data.fromId);
+
+    // Restore target unit (toUnit) with original data
+    await sb.from('units').update({
+      tenant_name: t.tenant_name,
+      tenant_name2: t.tenant_name2,
+      phone: t.phone,
+      phone2: t.phone2,
+      language: t.language,
+      persons_count: t.persons_count,
+      monthly_rent: t.monthly_rent,
+      rent1: t.rent1||0,
+      rent2: t.rent2||0,
+      deposit: t.deposit||0,
+      start_date: t.start_date,
+      is_vacant: t.is_vacant,
+      unit_status: t.unit_status,
+      notes: t.notes||null
+    }).eq('id', data.toId);
+
+    // Move deposit back to source unit
+    await sb.from('deposits').update({
+      unit_id: data.fromId,
+      apartment: String(data.fromApt),
+      room: String(data.fromRoom)
+    }).eq('unit_id', data.toId).eq('status','held');
+
+    // Delete the transfer record
+    await sb.from('internal_transfers').delete().eq('id', transferId);
+    toast(LANG==='ar'?'✅ تم التراجع عن النقل':'✅ Transfer undone','ok');
+    if(item) item.remove();
+    if(window.loadUnits) loadUnits();
+
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    btn.disabled = false;
+    btn.textContent = '↩️ تراجع';
+  }
+}
+
 window.executeInternalTransfer = executeInternalTransfer;
+window.undoInternalTransfer = undoInternalTransfer;
+window.loadInternalTransfers = loadInternalTransfers;
