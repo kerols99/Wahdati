@@ -786,8 +786,10 @@ async function openInternalTransferModal() {
     allUnits = res.data || [];
   } catch(e){}
 
+  // مشغولة أو سوف تغادر
   window._itOccupied = allUnits.filter(function(u){ return !u.is_vacant; });
-  window._itVacant   = allUnits.filter(function(u){ return u.is_vacant; });
+  // شاغرة أو متاحة للنقل إليها
+  window._itVacant   = allUnits.filter(function(u){ return u.is_vacant || u.unit_status==='available' || u.unit_status==='reserved'; });
 
   var existing = document.getElementById('internal-transfer-modal');
   if(existing) existing.remove();
@@ -870,8 +872,9 @@ function itFilterUnits(mode) {
   filtered.forEach(function(u){
     var div = document.createElement('div');
     div.style.cssText = 'padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--border)33;font-size:.82rem';
+    var statusTag = u.unit_status==='leaving_soon' ? ' 📤' : '';
     div.textContent = mode === 'from'
-      ? 'شقة '+u.apartment+' — غرفة '+u.room+' | '+(u.tenant_name||'—')
+      ? 'شقة '+u.apartment+' — غرفة '+u.room+' | '+(u.tenant_name||'—')+statusTag
       : 'شقة '+u.apartment+' — غرفة '+u.room+' | '+u.monthly_rent+' AED';
     div.addEventListener('click', function(){
       itSelectUnit(mode, u.id, div.textContent);

@@ -366,9 +366,13 @@ async function loadExpRpt(btn) {
         +exps.map(function(e){
           var esc2=function(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
           return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)22">'
-            +'<div><div style="font-size:.8rem;font-weight:600">'+esc2(e.category)+'</div>'
+            +'<div style="flex:1"><div style="font-size:.8rem;font-weight:600">'+esc2(e.category)+'</div>'
             +(e.description?'<div style="font-size:.68rem;color:var(--muted)">'+esc2(e.description)+'</div>':'')+'</div>'
+            +'<div style="display:flex;align-items:center;gap:6px">'
             +'<b style="color:var(--amber)">'+Number(e.amount||0).toLocaleString()+' AED</b>'
+            +'<button onclick="editExpense('+e.id+')" style="padding:4px 8px;background:var(--accent)22;border:1px solid var(--accent);border-radius:7px;color:var(--accent);font-size:.7rem;cursor:pointer;font-family:inherit">✏️</button>'
+            +'<button onclick="deleteExpense('+e.id+',this)" style="padding:4px 8px;background:var(--red)22;border:1px solid var(--red);border-radius:7px;color:var(--red);font-size:.7rem;cursor:pointer;font-family:inherit">🗑️</button>'
+            +'</div>'
             +'</div>';
         }).join('')
         +'</div></div>'

@@ -1436,7 +1436,75 @@ async function quickRefundDeposit(depId) {
   } catch(e){ toast('خطأ: '+e.message,'err'); }
 }
 
-window.autoFillRent=autoFillRent; window.calcOwnerBalance=calcOwnerBalance; window.autoFillDepDate=autoFillDepDate; window.saveRent=saveRent; window.saveExp=saveExp; window.saveOwner=saveOwner; window.saveDep=saveDep; window.setPayTenant=setPayTenant; window.askWhoPayment=askWhoPayment; window.askWhoWA=askWhoWA; window.togglePayHistory=togglePayHistory; window.editDeposit=editDeposit; window.quickRefundDeposit=quickRefundDeposit; window.saveEditDeposit=saveEditDeposit; window.deleteDeposit=deleteDeposit; window.editPayment=editPayment; window.saveEditPayment=saveEditPayment; window.deletePayment=deletePayment;
+
+// ══ EDIT / DELETE EXPENSE ══
+
+async function editExpense(expId) {
+  try {
+    var { data: e } = await sb.from('expenses').select('*').eq('id', expId).single();
+    if(!e) { toast(LANG==='ar'?'لم يتم العثور على المصروف':'Expense not found','err'); return; }
+
+    var modal = document.createElement('div');
+    modal.id = 'edit-exp-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;justify-content:center;padding:16px';
+
+    modal.innerHTML = '<div style="background:var(--surf);border-radius:20px;padding:20px;width:100%;max-width:480px">'
+      + '<div style="font-weight:700;font-size:1rem;margin-bottom:16px">✏️ '+(LANG==='ar'?'تعديل المصروف':'Edit Expense')+'</div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'الفئة':'Category')+'</label>'
+      + '<select class="inp" id="ee-cat">'
+      + ['صيانة','نظافة','كهرباء','ماء','أخرى'].map(function(cat){
+          return '<option value="'+cat+'"'+(e.category===cat?' selected':'')+'>'+cat+'</option>';
+        }).join('')
+      + '</select></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'المبلغ (AED)':'Amount (AED)')+'</label>'
+      + '<input class="inp" id="ee-amt" type="number" inputmode="numeric" value="'+(e.amount||0)+'"></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'رقم الإيصال':'Receipt No')+'</label>'
+      + '<input class="inp" id="ee-rec" value="'+(e.receipt_no||'')+'" placeholder="اختياري"></div>'
+      + '<div class="fld"><label>'+(LANG==='ar'?'الوصف':'Description')+'</label>'
+      + '<input class="inp" id="ee-desc" value="'+(e.description||'')+'" placeholder="اختياري"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:16px">'
+      + '<button onclick="saveEditExpense('+expId+')" style="flex:1;padding:13px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.9rem;font-weight:700;cursor:pointer">'+(LANG==='ar'?'حفظ':'Save')+'</button>'
+      + '<button onclick="document.getElementById(\'edit-exp-modal\').remove()" style="padding:13px 18px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--muted);font-family:inherit;cursor:pointer">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
+      + '</div></div>';
+
+    modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+    document.body.appendChild(modal);
+  } catch(e){ toast('خطأ: '+e.message,'err'); }
+}
+
+async function saveEditExpense(expId) {
+  try {
+    var cat  = document.getElementById('ee-cat').value;
+    var amt  = Number(document.getElementById('ee-amt').value||0);
+    var rec  = document.getElementById('ee-rec').value.trim()||null;
+    var desc = document.getElementById('ee-desc').value.trim()||null;
+    if(!amt){ toast(LANG==='ar'?'المبلغ مطلوب':'Amount required','err'); return; }
+    var { error } = await sb.from('expenses').update({ category:cat, amount:amt, receipt_no:rec, description:desc }).eq('id', expId);
+    if(error) throw error;
+    toast(LANG==='ar'?'تم التعديل ✓':'Updated ✓','ok');
+    document.getElementById('edit-exp-modal').remove();
+    // Refresh report
+    var btn = document.getElementById('btn-load-exp-rpt');
+    if(btn && window.loadExpRpt) loadExpRpt(btn);
+  } catch(e){ toast('خطأ: '+e.message,'err'); }
+}
+
+async function deleteExpense(expId, btn) {
+  if(!confirm(LANG==='ar'?'هل تريد حذف هذا المصروف؟':'Delete this expense?')) return;
+  try {
+    var { error } = await sb.from('expenses').delete().eq('id', expId);
+    if(error) throw error;
+    toast(LANG==='ar'?'تم الحذف ✓':'Deleted ✓','ok');
+    // Remove row from DOM
+    var row = btn ? btn.closest('[style*="border-bottom"]') : null;
+    if(row) row.remove();
+    // Refresh report
+    var rBtn = document.getElementById('btn-load-exp-rpt');
+    if(rBtn && window.loadExpRpt) loadExpRpt(rBtn);
+  } catch(e){ toast('خطأ: '+e.message,'err'); }
+}
+
+window.autoFillRent=autoFillRent; window.calcOwnerBalance=calcOwnerBalance; window.autoFillDepDate=autoFillDepDate; window.saveRent=saveRent; window.saveExp=saveExp; window.saveOwner=saveOwner; window.saveDep=saveDep; window.setPayTenant=setPayTenant; window.askWhoPayment=askWhoPayment; window.askWhoWA=askWhoWA; window.togglePayHistory=togglePayHistory; window.editDeposit=editDeposit; window.quickRefundDeposit=quickRefundDeposit; window.saveEditDeposit=saveEditDeposit; window.deleteDeposit=deleteDeposit; window.editExpense=editExpense; window.saveEditExpense=saveEditExpense; window.deleteExpense=deleteExpense; window.editPayment=editPayment; window.saveEditPayment=saveEditPayment; window.deletePayment=deletePayment;
 // ══════════════════════════════════════════════════════
 // BULK QUICK PAY — show all unpaid units in one list
 // ══════════════════════════════════════════════════════
