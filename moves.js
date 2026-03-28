@@ -581,7 +581,7 @@ async function loadMovesList(type) {
     var html = '';
     if(type==='depart') {
       // Fetch vacant units count
-      var { data: vacantUnits } = await sb.from('units').select('id').eq('is_vacant', true);
+      var { data: vacantUnits } = await sb.from('units').select('id,apartment,room,monthly_rent').eq('is_vacant', true).order('apartment',{ascending:true});
       var vacantCount = (vacantUnits||[]).length;
       var departCount = data.length;
       html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'
