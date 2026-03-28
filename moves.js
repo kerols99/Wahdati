@@ -199,7 +199,7 @@ async function addArrivalModal(){
 
   // Combine: departures + vacant units as targets
   var targets = vacantUnits.map(function(u){ return {...u, _type:'vacant'}; })
-    .concat(deps.map(function(m){ return {id:m.id, apartment:m.apartment, room:m.room, tenant_name:m.tenant_name, phone:m.phone, monthly_rent:0, deposit:0, _type:'depart', _moveId:m.id}; }));
+    .concat(deps.map(function(m){ return {id:m.unit_id||m.id, apartment:m.apartment, room:m.room, tenant_name:m.tenant_name, phone:m.phone, monthly_rent:0, deposit:0, _type:'depart', _moveId:m.id}; }));
 
   var overlay = document.createElement('div');
   overlay.id = 'move-modal';
