@@ -433,7 +433,7 @@ var now = new Date();
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الإيجار الشهري':'Monthly Rent')+'</div><div style="font-weight:700">'+(unit.monthly_rent||0)+' AED</div></div>'
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'المدفوع هذا الشهر':'Paid this month')+'</div><div style="font-weight:700;color:var(--green)">'+totalPaid+' AED</div></div>'
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'المتبقي':'Remaining')+'</div><div style="font-weight:700;color:'+(rem>0?'var(--red)':'var(--green)')+'">'+rem+' AED</div></div>'
-    + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الهاتف':'Phone')+'</div><div style="font-weight:700;font-size:.78rem">'+(unit.phone||'—')+'</div></div>'
+    + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الهاتف':'Phone')+'</div><div style="display:flex;align-items:center;gap:6px"><div style="font-weight:700;font-size:.78rem">'+(unit.phone||'—')+'</div>'+(unit.phone?'<button onclick="copyPhone(\''+unit.phone+'\')" style="padding:3px 8px;background:var(--surf3);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:.65rem;cursor:pointer;font-family:inherit">نسخ 📋</button>':'')+'</div></div>'
     + '</div>'
 
     + '<div style="background:var(--surf2);border-radius:12px;padding:12px;margin-bottom:14px">'
@@ -817,4 +817,14 @@ function openImgViewer(src) {
 window.openImgViewer = openImgViewer;
 
 window.loadHome=loadHome; window.loadUnits=loadUnits; window.renderUnits=renderUnits; window.setFilter=setFilter; window.filterUnits=filterUnits; window.openDrawer=openDrawer; window.drTouchStart=drTouchStart; window.drTouchMove=drTouchMove; window.drTouchEnd=drTouchEnd; window.closeDrawer=closeDrawer; window.editUnit=editUnit; window.confirmDel=confirmDel; window.deleteUnit=deleteUnit; window.saveUnit=saveUnit; window.clearUnit=clearUnit; window.calcTotalRent=calcTotalRent; window.openWelcomeFromUnit=openWelcomeFromUnit;
+
+function copyPhone(num) {
+  navigator.clipboard.writeText(num).then(function(){
+    toast('✅ تم نسخ الرقم', 'ok');
+  }).catch(function(){
+    toast(num, 'ok');
+  });
+}
+window.copyPhone = copyPhone;
+
 window.toggleVacantMode = toggleVacantMode;

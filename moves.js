@@ -592,6 +592,26 @@ async function loadMovesList(type) {
         + '<div style="font-size:1.6rem;font-weight:800;color:var(--amber)">'+vacantCount+'</div>'
         + '<div style="font-size:.7rem;color:var(--muted);margin-top:2px">🏠 '+(LANG==='ar'?'شاغرة حالياً':'Currently Vacant')+'</div></div>'
         + '</div>';
+      // PDF button
+      html += '<button onclick="printDepartureReport()" style="width:100%;padding:11px;background:var(--accent);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer;margin-bottom:10px">📄 طباعة / PDF التقرير</button>';
+
+      // Vacant units list
+      var vacantHtml = (vacantUnits||[]).length
+        ? (vacantUnits||[]).sort(function(a,b){
+            var n1=parseInt((a.apartment||'').replace(/\D/g,''))||0, n2=parseInt((b.apartment||'').replace(/\D/g,''))||0;
+            return n1!==n2 ? n1-n2 : String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true});
+          }).map(function(u){
+            return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--border)">'
+              +'<span style="font-weight:700">🏠 شقة '+esc(String(u.apartment||''))+' — غرفة '+esc(String(u.room||''))+'</span>'
+              +'<span style="font-size:.72rem;color:var(--amber)">'+esc(u.monthly_rent||0)+' AED</span>'
+              +'</div>';
+          }).join('')
+        : '<div style="color:var(--muted);font-size:.8rem">لا توجد وحدات شاغرة</div>';
+      html += '<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">'
+        + '<div style="font-size:.85rem;font-weight:800;margin-bottom:8px">🏠 '+(LANG==='ar'?'الوحدات الشاغرة':'Vacant Units')+' ('+vacantCount+')</div>'
+        + vacantHtml
+        + '</div>';
+
       html += '<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">'
         + '<div style="font-size:.78rem;color:var(--muted);margin-bottom:8px">' + esc(LANG==='ar'?'تقرير المغادرين':'Departure report') + '</div>'
         + '<div style="font-size:1rem;font-weight:800;margin-bottom:8px">' + esc(LANG==='ar'?'الترتيب حسب الشقة والغرفة':'Sorted by apartment and room') + '</div>'
@@ -999,7 +1019,86 @@ async function loadInternalTransfers() {
   }
 }
 
+
+// ══ PRINT DEPARTURE REPORT ══
+async function printDepartureReport() {
+  var listEl = document.getElementById('depart-list');
+  if(!listEl) return;
+
+  var { data: moves } = await sb.from('moves').select('*').eq('type','depart').order('apartment',{ascending:true});
+  var { data: vacant } = await sb.from('units').select('apartment,room,monthly_rent').eq('is_vacant',true).order('apartment',{ascending:true});
+  moves = moves||[]; vacant = vacant||[];
+
+  var today = new Date().toLocaleDateString(LANG==='ar'?'ar-AE':'en-GB');
+  var monthLabel = new Date().toLocaleDateString(LANG==='ar'?'ar-AE':'en-GB',{month:'long',year:'numeric'});
+
+  var body = '<div dir="rtl" style="font-family:Arial,sans-serif;padding:20px;max-width:800px;margin:0 auto;color:#111">'
+    + '<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
+    + '<div><div style="font-size:20px;font-weight:800;color:#1a3a6a">تقرير التنقلات</div>'
+    + '<div style="font-size:13px;color:#555">'+monthLabel+'</div></div>'
+    + '<div style="font-size:11px;color:#888">Wahdati<br>'+today+'</div></div>'
+
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">'
+    + '<div style="background:#fff0f0;border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:24px;font-weight:800;color:#c0392b">'+moves.length+'</div>'
+    + '<div style="font-size:12px;color:#555">📤 مغادرون</div></div>'
+    + '<div style="background:#fff8e8;border-radius:8px;padding:12px;text-align:center">'
+    + '<div style="font-size:24px;font-weight:800;color:#e67e22">'+vacant.length+'</div>'
+    + '<div style="font-size:12px;color:#555">🏠 شاغرة حالياً</div></div>'
+    + '</div>'
+
+    + '<div style="font-size:14px;font-weight:800;margin-bottom:8px;color:#1a3a6a">📤 قائمة المغادرين ('+moves.length+')</div>'
+    + '<table style="width:100%;border-collapse:collapse;margin-bottom:16px">'
+    + '<thead><tr style="background:#f0f4ff">'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #1a3a6a">الشقة</th>'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #1a3a6a">الغرفة</th>'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #1a3a6a">تاريخ المغادرة</th>'
+    + '</tr></thead><tbody>'
+    + moves.sort(function(a,b){
+        var n1=parseInt(a.apartment||0), n2=parseInt(b.apartment||0);
+        return n1!==n2?n1-n2:parseInt(a.room||0)-parseInt(b.room||0);
+      }).map(function(m){
+        return '<tr style="border-bottom:1px solid #eee">'
+          +'<td style="padding:7px 8px;font-size:12px">شقة '+m.apartment+'</td>'
+          +'<td style="padding:7px 8px;font-size:12px">غرفة '+m.room+'</td>'
+          +'<td style="padding:7px 8px;font-size:12px;color:#555">'+(m.move_date||'—')+'</td>'
+          +'</tr>';
+      }).join('')
+    + '</tbody></table>'
+
+    + '<div style="font-size:14px;font-weight:800;margin-bottom:8px;color:#1a3a6a">🏠 الوحدات الشاغرة ('+vacant.length+')</div>'
+    + '<table style="width:100%;border-collapse:collapse">'
+    + '<thead><tr style="background:#fffbf0">'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #e67e22">الشقة</th>'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #e67e22">الغرفة</th>'
+    + '<th style="padding:8px;text-align:right;font-size:12px;border-bottom:2px solid #e67e22">الإيجار</th>'
+    + '</tr></thead><tbody>'
+    + vacant.sort(function(a,b){
+        var n1=parseInt(a.apartment||0), n2=parseInt(b.apartment||0);
+        return n1!==n2?n1-n2:parseInt(a.room||0)-parseInt(b.room||0);
+      }).map(function(u){
+        return '<tr style="border-bottom:1px solid #eee">'
+          +'<td style="padding:7px 8px;font-size:12px">شقة '+u.apartment+'</td>'
+          +'<td style="padding:7px 8px;font-size:12px">غرفة '+u.room+'</td>'
+          +'<td style="padding:7px 8px;font-size:12px;color:#e67e22">'+Number(u.monthly_rent||0).toLocaleString()+' AED</td>'
+          +'</tr>';
+      }).join('')
+    + '</tbody></table>'
+    + '</div>';
+
+  var overlay = document.getElementById('pdfOverlay');
+  var pdfEl   = document.getElementById('pdf-content');
+  if(overlay && pdfEl) {
+    pdfEl.innerHTML = '<style>body,html{background:#fff;color:#111}</style>' + body;
+    overlay.style.display = 'flex';
+  } else {
+    var w = window.open('','_blank','width=900,height=1000');
+    if(w){ w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>تقرير التنقلات</title></head><body>'+body+'</body></html>'); w.document.close(); setTimeout(function(){ w.print(); },500); }
+  }
+}
+
 window.openInternalTransferModal = openInternalTransferModal;
+window.printDepartureReport = printDepartureReport;
 window.itFilterUnits = itFilterUnits;
 window.itSelectUnit  = itSelectUnit;
 
