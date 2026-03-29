@@ -1031,10 +1031,22 @@ async function loadInternalTransfers() {
       item.style.cssText = 'background:var(--surf2);border-radius:12px;padding:12px;margin-bottom:8px;border-right:4px solid var(--green)';
       item.dataset.transferId = rec.id;
 
+      // Check if this is a pending/scheduled transfer
+      var isPending = rec.notes && rec.notes.indexOf('مجدوله') > -1;
+
       var undoBtn = document.createElement('button');
-      undoBtn.textContent = '↩️ تراجع';
+      undoBtn.textContent = isPending ? '🗑️ إلغاء' : '↩️ تراجع';
       undoBtn.style.cssText = 'padding:6px 10px;background:var(--amber)22;border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0';
       undoBtn.addEventListener('click', function(){ undoInternalTransfer(undoBtn); });
+
+      // Confirm button for scheduled transfers
+      if(isPending) {
+        var confirmBtn = document.createElement('button');
+        confirmBtn.textContent = '✅ تنفيذ النقل الآن';
+        confirmBtn.style.cssText = 'margin-top:6px;width:100%;padding:8px;background:var(--green)22;border:1px solid var(--green);border-radius:8px;color:var(--green);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit';
+        confirmBtn.addEventListener('click', function(){ confirmScheduledTransfer(rec.id, rec.from_snapshot, rec.to_snapshot, rec.from_unit_id, rec.to_unit_id); });
+        item.appendChild(confirmBtn);
+      }
 
       var info = document.createElement('div');
       info.innerHTML = '<div style="font-weight:700">🔄 '+(f.tenant_name||'—')+'</div>'
@@ -1161,7 +1173,12 @@ async function executeInternalTransfer() {
   if(!toId)   { toast(LANG==='ar'?'اختر الوحدة الجديدة':'Select target unit','err'); return; }
   if(fromId === toId) { toast(LANG==='ar'?'الوحدتان متشابهتان':'Same unit selected','err'); return; }
   if(!date)   { toast(LANG==='ar'?'التاريخ مطلوب':'Date required','err'); return; }
-  if(!confirm(LANG==='ar'?'هل تريد تنفيذ النقل الداخلي؟':'Execute internal transfer?')) return;
+
+  // Check if future transfer
+  var isFutureTransfer = new Date(date) > new Date();
+  if(!confirm(isFutureTransfer
+    ? (LANG==='ar'?'هل تريد حجز النقل في '+date+' بدون تغيير البيانات الآن؟':'Schedule transfer for '+date+' without changing data now?')
+    : (LANG==='ar'?'هل تريد تنفيذ النقل الداخلي الآن؟':'Execute internal transfer now?'))) return;
 
   var btn = document.getElementById('it-exec-btn');
   if(btn) { btn.disabled=true; btn.textContent='⏳ جاري النقل...'; }
@@ -1171,6 +1188,24 @@ async function executeInternalTransfer() {
     if(e1) throw e1;
     var { data: toUnit, error: e2 } = await sb.from('units').select('*').eq('id', toId).single();
     if(e2) throw e2;
+
+    // If future transfer — save to internal_transfers as pending, don't update units
+    if(isFutureTransfer) {
+      await sb.from('internal_transfers').insert({
+        from_unit_id: fromId,
+        to_unit_id: toId,
+        from_snapshot: fromUnit,
+        to_snapshot: toUnit,
+        transfer_date: date,
+        notes: (notes||'') + ' | مجدوله — لم تُنفَّذ بعد',
+        created_by: ME ? ME.id : null
+      });
+      toast(LANG==='ar'?'✅ تم جدولة النقل في '+date:'✅ Transfer scheduled for '+date,'ok');
+      var modal = document.getElementById('internal-transfer-modal');
+      if(modal) modal.remove();
+      if(window.loadInternalTransfers) loadInternalTransfers();
+      return;
+    }
 
     // 1. Save snapshots in unit_history + internal_transfers
     await sb.from('unit_history').insert({
@@ -1438,3 +1473,74 @@ async function confirmArrival(moveId, unitId) {
   }
 }
 window.confirmArrival = confirmArrival;
+
+
+async function confirmScheduledTransfer(transferId, fromSnapshot, toSnapshot, fromId, toId) {
+  if(!confirm(LANG==='ar'?'هل تريد تنفيذ النقل الآن؟':'Execute transfer now?')) return;
+  try {
+    var f = fromSnapshot;
+    var t = toSnapshot;
+    var date = new Date().toISOString().slice(0,10);
+
+    // Archive fromUnit to unit_history
+    await sb.from('unit_history').insert({
+      unit_id: fromId, apartment: parseInt(f.apartment)||0, room: parseInt(f.room)||0,
+      tenant_name: f.tenant_name, tenant_name2: f.tenant_name2,
+      phone: f.phone, phone2: f.phone2,
+      monthly_rent: f.monthly_rent, rent1: f.rent1, rent2: f.rent2,
+      deposit: f.deposit, persons_count: f.persons_count,
+      start_date: f.start_date, end_date: date,
+      notes: 'نقل داخلي إلى شقة '+t.apartment+' غرفة '+t.room,
+      snapshot_type: 'internal_transfer_out', recorded_by: ME ? ME.id : null
+    });
+
+    // Archive toUnit to unit_history
+    if(t.tenant_name) {
+      await sb.from('unit_history').insert({
+        unit_id: toId, apartment: parseInt(t.apartment)||0, room: parseInt(t.room)||0,
+        tenant_name: t.tenant_name, tenant_name2: t.tenant_name2,
+        phone: t.phone, phone2: t.phone2,
+        monthly_rent: t.monthly_rent, rent1: t.rent1, rent2: t.rent2,
+        deposit: t.deposit, persons_count: t.persons_count,
+        start_date: t.start_date, end_date: date,
+        notes: 'تم استبداله بنقل داخلي من شقة '+f.apartment+' غرفة '+f.room,
+        snapshot_type: 'internal_transfer_displaced', recorded_by: ME ? ME.id : null
+      });
+    }
+
+    // Update toUnit with fromUnit tenant
+    await sb.from('units').update({
+      tenant_name: f.tenant_name, tenant_name2: f.tenant_name2,
+      phone: f.phone, phone2: f.phone2, language: f.language,
+      persons_count: f.persons_count, monthly_rent: f.monthly_rent,
+      rent1: f.rent1||0, rent2: f.rent2||0, deposit: f.deposit||0,
+      start_date: date, is_vacant: false, unit_status: 'occupied',
+      notes: f.notes||null
+    }).eq('id', toId);
+
+    // Clear fromUnit
+    await sb.from('units').update({
+      tenant_name: null, tenant_name2: null, phone: null, phone2: null,
+      monthly_rent: 0, rent1: 0, rent2: 0, deposit: 0,
+      start_date: null, is_vacant: true, unit_status: 'available',
+      notes: 'أُفرغت بنقل داخلي — '+date
+    }).eq('id', fromId);
+
+    // Transfer deposit
+    await sb.from('deposits').update({
+      unit_id: toId, apartment: String(t.apartment), room: String(t.room)
+    }).eq('unit_id', fromId).eq('status','held');
+
+    // Update internal_transfers record (remove pending note)
+    await sb.from('internal_transfers').update({
+      notes: 'تم التنفيذ في '+date
+    }).eq('id', transferId);
+
+    toast(LANG==='ar'?'✅ تم تنفيذ النقل':'✅ Transfer executed','ok');
+    loadInternalTransfers();
+    if(window.loadUnits) loadUnits();
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+  }
+}
+window.confirmScheduledTransfer = confirmScheduledTransfer;
