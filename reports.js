@@ -40,12 +40,14 @@ async function loadMonthly(btn) {
     // Parallel fetch — only needed fields for performance
     var monStart = (mon||'').slice(0,7)+'-01';
     var monEnd   = window.monthEnd((mon||'').slice(0,7));
-    var [unitsRes, paysRes, expsRes, ownsRes, depsRes, refundedDepsRes] = await Promise.all([
+    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').eq('is_vacant',false).order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
       sb.from('expenses').select('amount,category,description,receipt_no,period_month').eq('period_month', monStart),
       sb.from('owner_payments').select('amount,period_month,method').eq('period_month', monStart),
+      // Pending future bookings for this month
+      sb.from('moves').select('unit_id,new_tenant_name,tenant_name,new_start_date,move_date,new_rent,status').eq('type','arrive').eq('status','pending'),
       // Deposits received this month
       sb.from('deposits').select('unit_id,amount,deposit_received_date,status,refund_date,tenant_name,apartment,room')
         .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
@@ -56,6 +58,30 @@ async function loadMonthly(btn) {
         .lte('refund_date', monEnd)
     ]);
     var units        = unitsRes.data||[];
+    var pendingMoves = pendingMovesRes ? (pendingMovesRes.data||[]) : [];
+    // Build map: unit_id → pending move (for future tenant name)
+    var pendingMoveMap = {};
+    pendingMoves.forEach(function(m){
+      if(m.unit_id) pendingMoveMap[m.unit_id] = m;
+    });
+    // Determine effective tenant name per unit for this month
+    units = units.map(function(u){
+      var pm = pendingMoveMap[u.id];
+      if(pm) {
+        var moveDate = pm.new_start_date || pm.move_date;
+        var moveMon = moveDate ? moveDate.slice(0,7) : null;
+        var reportMon = mon.slice(0,7);
+        if(moveMon && moveMon <= reportMon) {
+          // New tenant takes over this month
+          return Object.assign({}, u, {
+            tenant_name: pm.new_tenant_name || pm.tenant_name,
+            monthly_rent: pm.new_rent || u.monthly_rent,
+            _pendingTenant: true
+          });
+        }
+      }
+      return u;
+    });
     var pays         = paysRes.data||[];
     var exps         = expsRes.data||[];
     var owns         = ownsRes.data||[];

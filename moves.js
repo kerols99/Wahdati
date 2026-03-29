@@ -445,6 +445,26 @@ async function saveArrivalEntry(btn){
     var ins = await sb.from('moves').insert(payload);
     if(ins.error) throw ins.error;
 
+    // Register deposit immediately if provided
+    if(deposit && deposit > 0 && unitId) {
+      var depDate = date || new Date().toISOString().slice(0,10);
+      var { data: unitInfo } = await sb.from('units').select('apartment,room').eq('id', parseInt(unitId)).single();
+      var depApt = unitInfo ? String(unitInfo.apartment) : String(apt);
+      var depRoom = unitInfo ? String(unitInfo.room) : String(room);
+      await sb.from('deposits').insert({
+        unit_id: parseInt(unitId),
+        apartment: depApt,
+        room: depRoom,
+        tenant_name: name,
+        amount: deposit,
+        status: 'held',
+        refund_amount: 0,
+        deduction_amount: 0,
+        deposit_received_date: depDate,
+        notes: isFutureBooking ? 'عربون حجز — يُفعَّل في '+date : null
+      });
+    }
+
     toast(isFutureBooking ? (LANG==='ar'?'✅ تم تسجيل الحجز — سيتفعل في '+date:'✅ Booking saved — activates on '+date) : (LANG==='ar'?'تم تسجيل الحجز ✓':'Booking saved ✓'),'ok');
     var modal = document.getElementById('move-modal');
     if(modal) modal.remove();
