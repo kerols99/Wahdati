@@ -1199,16 +1199,16 @@ async function executeInternalTransfer() {
     if(isFutureTransfer) {
       var fSnap = JSON.parse(JSON.stringify(fromUnit));
       var tSnap = JSON.parse(JSON.stringify(toUnit));
-      var { error: insErr } = await sb.from('internal_transfers').insert({
-        from_unit_id: fromId,
-        to_unit_id: toId,
+      var { data: insData, error: insErr } = await sb.from('internal_transfers').insert({
+        from_unit_id: parseInt(fromId),
+        to_unit_id: parseInt(toId),
         from_snapshot: fSnap,
         to_snapshot: tSnap,
         transfer_date: date,
         notes: (notes||'مجدول') + ' | مجدوله — لم تُنفَّذ بعد',
         created_by: ME ? ME.id : null
       });
-      if(insErr) throw insErr;
+      if(insErr) { toast('خطأ في الحفظ: '+insErr.message,'err'); return; }
       toast(LANG==='ar'?'✅ تم جدولة النقل في '+date:'✅ Transfer scheduled for '+date,'ok');
       var modal = document.getElementById('internal-transfer-modal');
       if(modal) modal.remove();
