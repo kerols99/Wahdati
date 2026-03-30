@@ -607,9 +607,9 @@ async function loadMovesList(type) {
     var { data: pendingArrivals } = await sb.from('moves').select('unit_id,apartment,room').eq('type','arrive').eq('status','pending');
     var { data: pendingTransfersData } = await sb.from('internal_transfers').select('to_unit_id,notes').like('notes','%مجدوله%');
     var bookedUnitIds = {};
-    (pendingArrivals||[]).forEach(function(a){ if(a.unit_id) bookedUnitIds[a.unit_id]='booking'; });
+    (pendingArrivals||[]).forEach(function(a){ if(a.unit_id) bookedUnitIds[String(a.unit_id)]='booking'; });
     var transferToIds = {};
-    (pendingTransfersData||[]).forEach(function(t){ if(t.to_unit_id) transferToIds[t.to_unit_id]='transfer'; });
+    (pendingTransfersData||[]).forEach(function(t){ if(t.to_unit_id) transferToIds[String(t.to_unit_id)]='transfer'; });
     data.sort(function(a,b){
       var aptA = parseInt(a.apartment,10) || 0, aptB = parseInt(b.apartment,10) || 0;
       if(aptA !== aptB) return aptA - aptB;
@@ -644,7 +644,7 @@ async function loadMovesList(type) {
             var n1=parseInt((a.apartment||'').replace(/\D/g,''))||0, n2=parseInt((b.apartment||'').replace(/\D/g,''))||0;
             return n1!==n2 ? n1-n2 : String(a.room||'').localeCompare(String(b.room||''),undefined,{numeric:true});
           }).map(function(u){
-            var isBooked = bookedUnitIds[u.id] || transferToIds[u.id];
+            var isBooked = bookedUnitIds[String(u.id)] || transferToIds[String(u.id)];
             var bookLabel = isBooked === 'booking' ? ' <span style="color:var(--green);font-size:.68rem;font-weight:700">✅ محجوز</span>'
               : isBooked === 'transfer' ? ' <span style="color:var(--purple);font-size:.68rem;font-weight:700">✅ نقل</span>' : '';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px dashed var(--border)">'
@@ -653,7 +653,7 @@ async function loadMovesList(type) {
               +'</div>';
           }).join('')
         : '<div style="color:var(--muted);font-size:.8rem">لا توجد وحدات شاغرة</div>';
-      var bookedVacantCount = (vacantUnits||[]).filter(function(u){ return bookedUnitIds[u.id] || transferToIds[u.id]; }).length;
+      var bookedVacantCount = (vacantUnits||[]).filter(function(u){ return bookedUnitIds[String(u.id)] || transferToIds[String(u.id)]; }).length;
       var remainingVacant = vacantCount - bookedVacantCount;
       html += '<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
@@ -684,7 +684,7 @@ async function loadMovesList(type) {
         : '<span style="background:var(--green)22;color:var(--green);border-radius:6px;padding:2px 8px;font-size:.7rem">📥 ' + esc(LANG==='ar'?'حجز جديد':'Booking') + '</span>';
       var title = esc(LANG==='ar'?'شقة ':'Apt ') + esc(m.apartment||'') + ' — ' + esc(LANG==='ar'?'غرفة ':'Room ') + esc(m.room||'');
       // Check if this unit has a pending booking or transfer
-      var unitStatus = m.unit_id ? (bookedUnitIds[m.unit_id] || transferToIds[m.unit_id]) : null;
+      var unitStatus = m.unit_id ? (bookedUnitIds[String(m.unit_id)] || transferToIds[String(m.unit_id)]) : null;
       var statusBadge = unitStatus === 'booking'
         ? '<span style="background:var(--green)22;color:var(--green);border-radius:6px;padding:2px 8px;font-size:.68rem;font-weight:700">✅ محجوز</span>'
         : unitStatus === 'transfer'
