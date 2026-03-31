@@ -638,14 +638,7 @@ async function loadMovesList(type) {
       // Booked departures summary
       var bookedDepartCount = data.filter(function(m){ return m.unit_id && (bookedUnitIds[String(m.unit_id)] || transferToIds[String(m.unit_id)]); }).length;
       var remainingDepart = departCount - bookedDepartCount;
-      // ── الملخص الإجمالي ──
-      var totalAvailable = departCount + vacantCount;
-      var totalBooked = bookedDepartCount + bookedVacantCount;
-      var totalRemaining = totalAvailable - totalBooked;
-      // Breakdown: transfers vs new bookings
-      var totalTransferBooked = data.filter(function(m){ return m.unit_id && transferToIds[String(m.unit_id)]; }).length
-        + (vacantUnits||[]).filter(function(u){ return transferToIds[String(u.id)]; }).length;
-      var totalNewBooked = totalBooked - totalTransferBooked;
+      // totalBooked will be calculated after bookedVacantCount is defined below
 
       html += '<div style="background:var(--surf2);border:1.5px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">'
         + '<div style="font-size:.85rem;font-weight:800;margin-bottom:10px">📊 '+(LANG==='ar'?'الملخص الإجمالي':'Overall Summary')+'</div>'
@@ -696,6 +689,13 @@ async function loadMovesList(type) {
         : '<div style="color:var(--muted);font-size:.8rem">لا توجد وحدات شاغرة</div>';
       var bookedVacantCount = (vacantUnits||[]).filter(function(u){ return bookedUnitIds[String(u.id)] || transferToIds[String(u.id)]; }).length;
       var remainingVacant = vacantCount - bookedVacantCount;
+      // ── الملخص الإجمالي ──
+      var totalAvailable = departCount + vacantCount;
+      var totalBooked = bookedDepartCount + bookedVacantCount;
+      var totalRemaining = totalAvailable - totalBooked;
+      var totalTransferBooked = data.filter(function(m){ return m.unit_id && transferToIds[String(m.unit_id)]; }).length
+        + (vacantUnits||[]).filter(function(u){ return transferToIds[String(u.id)]; }).length;
+      var totalNewBooked = totalBooked - totalTransferBooked;
       html += '<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
         + '<div style="font-size:.85rem;font-weight:800">🏠 '+(LANG==='ar'?'الوحدات الشاغرة':'Vacant Units')+' ('+vacantCount+')</div>'
