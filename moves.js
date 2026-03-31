@@ -439,6 +439,7 @@ async function saveArrivalEntry(btn){
       new_deposit: deposit||null,
       new_persons: persons,
       new_start_date: date||null,
+      notes: (notes||'') + (lang && lang!=='EN' ? ' | lang:'+lang : ''),
       status: doUpdate ? 'done' : 'pending',
       created_by: (ME||{}).id||null
     };
@@ -1584,11 +1585,14 @@ async function confirmArrival(moveId, unitId) {
       persons_count: move.new_persons || move.persons_count || 1,
       start_date: move.new_start_date || move.move_date,
       is_vacant: false, unit_status: 'occupied',
+      language: (move.notes && move.notes.indexOf('lang:AR')>-1) ? 'AR' : 'EN',
       tenant_name2: null, phone2: null
     }).eq('id', parseInt(unitId));
 
-    // Register deposit
+    // Register deposit — delete عربون first to avoid duplicates
     if(move.new_deposit && move.new_deposit > 0 && unit) {
+      await sb.from('deposits').delete()
+        .eq('unit_id', parseInt(unitId)).like('notes','%عربون حجز%');
       await sb.from('deposits').insert({
         unit_id: parseInt(unitId),
         apartment: String(unit.apartment), room: String(unit.room),

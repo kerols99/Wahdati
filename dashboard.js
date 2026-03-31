@@ -854,6 +854,78 @@ async function activateReservedUnits() {
     if(toActivate.length > 0) {
       toast('✅ تم تفعيل '+toActivate.length+' وحدة محجوزة', 'ok');
     }
+
+    var today2 = new Date().toISOString().slice(0,10);
+
+    // Auto-confirm pending bookings (arrive) whose date has arrived
+    var { data: pendingArrivals } = await sb.from('moves')
+      .select('*').eq('type','arrive').eq('status','pending')
+      .lte('new_start_date', today2);
+    if(pendingArrivals && pendingArrivals.length) {
+      for(var j=0; j<pendingArrivals.length; j++) {
+        var mv = pendingArrivals[j];
+        if(!mv.unit_id) continue;
+        // Update unit with new tenant
+        await sb.from('units').update({
+          tenant_name: mv.new_tenant_name || mv.tenant_name,
+          phone: mv.new_phone || mv.phone,
+          monthly_rent: mv.new_rent || 0,
+          rent1: mv.new_rent || 0,
+          deposit: mv.new_deposit || 0,
+          persons_count: mv.new_persons || mv.persons_count || 1,
+          start_date: mv.new_start_date || mv.move_date,
+          is_vacant: false,
+          unit_status: 'occupied',
+          language: (mv.notes && mv.notes.indexOf('lang:AR')>-1) ? 'AR' : 'EN'
+        }).eq('id', parseInt(mv.unit_id));
+        // Mark move as done
+        await sb.from('moves').update({ status: 'done' }).eq('id', mv.id);
+        // Delete duplicate deposit (عربون حجز) if confirmation deposit was added
+        await sb.from('deposits').delete()
+          .eq('unit_id', parseInt(mv.unit_id))
+          .like('notes','%عربون حجز%');
+      }
+      toast('✅ تم تأكيد '+pendingArrivals.length+' حجز تلقائياً', 'ok');
+    }
+
+    // Auto-execute scheduled internal transfers whose date has arrived
+    var { data: pendingTransfers } = await sb.from('internal_transfers')
+      .select('*').like('notes','%مجدوله%')
+      .lte('transfer_date', today2);
+    if(pendingTransfers && pendingTransfers.length) {
+      for(var k=0; k<pendingTransfers.length; k++) {
+        var tr = pendingTransfers[k];
+        var f = tr.from_snapshot || {};
+        var t = tr.to_snapshot || {};
+        // Update toUnit with fromUnit tenant
+        await sb.from('units').update({
+          tenant_name: f.tenant_name, tenant_name2: f.tenant_name2,
+          phone: f.phone, phone2: f.phone2, language: f.language,
+          persons_count: f.persons_count, monthly_rent: f.monthly_rent,
+          rent1: f.rent1||0, rent2: f.rent2||0, deposit: f.deposit||0,
+          start_date: tr.transfer_date,
+          is_vacant: false, unit_status: 'occupied'
+        }).eq('id', tr.to_unit_id);
+        // Clear fromUnit
+        await sb.from('units').update({
+          tenant_name: null, tenant_name2: null, phone: null, phone2: null,
+          monthly_rent: 0, rent1: 0, rent2: 0, deposit: 0,
+          start_date: null, is_vacant: true, unit_status: 'available'
+        }).eq('id', tr.from_unit_id);
+        // Transfer deposit
+        await sb.from('deposits').update({
+          unit_id: tr.to_unit_id,
+          apartment: String(t.apartment),
+          room: String(t.room)
+        }).eq('unit_id', tr.from_unit_id).eq('status','held');
+        // Mark as executed
+        await sb.from('internal_transfers').update({
+          notes: 'تم التنفيذ تلقائياً في '+today2
+        }).eq('id', tr.id);
+      }
+      toast('✅ تم تنفيذ '+pendingTransfers.length+' نقل داخلي تلقائياً', 'ok');
+    }
+
   } catch(e) { /* silent */ }
 }
 
