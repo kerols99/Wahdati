@@ -1142,7 +1142,7 @@ async function printDepartureReport() {
   var listEl = document.getElementById('depart-list');
   if(!listEl) return;
 
-  var { data: moves } = await sb.from('moves').select('*').eq('type','depart').order('apartment',{ascending:true});
+  var { data: moves } = await sb.from('moves').select('*').eq('type','depart').eq('status','pending').order('apartment',{ascending:true});
   var { data: vacant } = await sb.from('units').select('id,apartment,room,monthly_rent').eq('is_vacant',true).order('apartment',{ascending:true});
   var { data: allUnitsForPdf } = await sb.from('units').select('id,monthly_rent');
   window._pdfUnitMap = {};
@@ -1151,13 +1151,13 @@ async function printDepartureReport() {
   var { data: pdfArrivals } = await sb.from('moves').select('unit_id').eq('type','arrive').eq('status','pending');
   var { data: pdfTransfers } = await sb.from('internal_transfers').select('to_unit_id').like('notes','%مجدوله%');
   var pdfBookedIds = {};
-  (pdfArrivals||[]).forEach(function(a){ if(a.unit_id) pdfBookedIds[a.unit_id]='booking'; });
+  (pdfArrivals||[]).forEach(function(a){ if(a.unit_id) pdfBookedIds[String(a.unit_id)]='booking'; });
   var pdfTransferIds = {};
-  (pdfTransfers||[]).forEach(function(t){ if(t.to_unit_id) pdfTransferIds[t.to_unit_id]='transfer'; });
+  (pdfTransfers||[]).forEach(function(t){ if(t.to_unit_id) pdfTransferIds[String(t.to_unit_id)]='transfer'; });
   moves = moves||[]; vacant = vacant||[];
   // Calculate summary
-  var pdfBookedDepart = moves.filter(function(m){ return m.unit_id && (pdfBookedIds[m.unit_id] || pdfTransferIds[m.unit_id]); }).length;
-  var pdfBookedVacant = vacant.filter(function(u){ return pdfBookedIds[u.id] || pdfTransferIds[u.id]; }).length;
+  var pdfBookedDepart = moves.filter(function(m){ return m.unit_id && (pdfBookedIds[String(m.unit_id)] || pdfTransferIds[String(m.unit_id)]); }).length;
+  var pdfBookedVacant = vacant.filter(function(u){ return pdfBookedIds[String(u.id)] || pdfTransferIds[String(u.id)]; }).length;
   var pdfTotalAvail   = moves.length + vacant.length;
   var pdfTotalBooked  = pdfBookedDepart + pdfBookedVacant;
   var pdfTotalRemain  = pdfTotalAvail - pdfTotalBooked;
