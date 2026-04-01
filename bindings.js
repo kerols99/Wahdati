@@ -49,6 +49,7 @@
         case 'loadMonthly': return window.loadMonthly && window.loadMonthly(el);
         case 'loadExpRpt': return window.loadExpRpt && window.loadExpRpt(el);
         case 'loadDepRpt': return window.loadDepRpt && window.loadDepRpt(el);
+        case 'loadAllDeps': return window.loadAllDeps && window.loadAllDeps(el);
         case 'loadAnnual': return window.loadAnnual && window.loadAnnual(el);
         case 'loadStats': return window.loadStats && window.loadStats(el);
         case 'loadCollReport': return window.loadCollReport && window.loadCollReport(el);

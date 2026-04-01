@@ -10,11 +10,10 @@
 // ══════════════════════════════════════════════════════
 
 function _pickDepositForReport(depRows, monYM) {
-  // Each deposit counted in its deposit_received_date month
-  // RULE: refunded deposits are EXCLUDED (they went back to tenant)
+  // كل تأمين استُلم في هذا الشهر يُحتسب — سواء مرتجع أو لا
+  // الفلوس دخلت فعلاً — الإرجاع يظهر منفصلاً كخصم
   var rows = Array.isArray(depRows) ? depRows : [];
   return rows.reduce(function(s, d) {
-    if(d.status === 'refunded') return s;        // مُرتجع → لا يُحتسب
     var rd = String(d.deposit_received_date || '').slice(0, 7);
     return rd === monYM ? s + (Number(d.amount) || 0) : s;
   }, 0);
@@ -486,9 +485,26 @@ async function loadDepRpt(btn) {
         +'<span style="font-weight:800;font-size:.88rem;color:'+color+'">'+total.toLocaleString()+' AED</span>'
         +'</div>';
       if(extraNote) html += '<div style="background:'+color+'11;padding:5px 14px;font-size:.7rem;color:var(--muted)">'+extraNote+'</div>';
-      html += '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px">';
-      items.forEach(function(d){ html += depRow(d); });
-      html += '</div></div>';
+      // Group by apartment
+      var aptGroups = {};
+      items.forEach(function(d){
+        var u = d.unit_id ? unitById[d.unit_id] : null;
+        var apt = u ? String(u.apartment) : String(d.apartment||'—');
+        if(!aptGroups[apt]) aptGroups[apt] = { items:[], total:0 };
+        aptGroups[apt].items.push(d);
+        aptGroups[apt].total += Number(d.status==='refunded' ? (d.refund_amount||d.amount||0) : (d.amount||0));
+      });
+      Object.keys(aptGroups).sort(function(a,b){ return Number(a)-Number(b); }).forEach(function(apt){
+        var ag = aptGroups[apt];
+        html += '<div style="border:1px solid var(--border);border-top:none">'
+          +'<div style="background:var(--surf2);padding:7px 13px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)22">'
+          +'<span style="font-size:.78rem;font-weight:700">🏢 '+(LANG==="ar"?"شقة ":"Apt ")+escapeHtml(apt)+'</span>'
+          +'<span style="font-size:.75rem;color:'+color+';font-weight:700">'+ag.total.toLocaleString()+' AED</span>'
+          +'</div>';
+        ag.items.forEach(function(d){ html += depRow(d); });
+        html += '</div>';
+      });
+      html += '</div>';
       return html;
     }
 
