@@ -1608,7 +1608,13 @@ async function confirmArrival(moveId, unitId) {
       persons_count: move.new_persons || move.persons_count || 1,
       start_date: move.new_start_date || move.move_date,
       is_vacant: false, unit_status: 'occupied',
-      language: (move.notes && move.notes.indexOf('lang:AR')>-1) ? 'AR' : 'EN',
+      language: (function(){
+        var n = move.notes || '';
+        if(n.indexOf('lang:AR')>-1) return 'AR';
+        if(n.indexOf('lang:EN')>-1) return 'EN';
+        // fallback: حجوزات قديمة — خذ اللغة من الوحدة الحالية
+        return (unit && unit.language) ? unit.language : 'AR';
+      })(),
       tenant_name2: null, phone2: null
     }).eq('id', parseInt(unitId));
 

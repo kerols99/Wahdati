@@ -887,7 +887,12 @@ async function activateReservedUnits() {
           start_date: mv.new_start_date || mv.move_date,
           is_vacant: false,
           unit_status: 'occupied',
-          language: (mv.notes && mv.notes.indexOf('lang:AR')>-1) ? 'AR' : 'EN'
+          language: (function(){
+            var n = mv.notes || '';
+            if(n.indexOf('lang:AR')>-1) return 'AR';
+            if(n.indexOf('lang:EN')>-1) return 'EN';
+            return 'AR'; // default للحجوزات القديمة في دبي
+          })()
         }).eq('id', parseInt(mv.unit_id));
         // Mark move as done
         await sb.from('moves').update({ status: 'done' }).eq('id', mv.id);
