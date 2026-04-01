@@ -40,7 +40,7 @@ async function loadMonthly(btn) {
     // Parallel fetch — only needed fields for performance
     var monStart = (mon||'').slice(0,7)+'-01';
     var monEnd   = window.monthEnd((mon||'').slice(0,7));
-    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes] = await Promise.all([
+    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, historyRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').eq('is_vacant',false).order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
@@ -55,32 +55,38 @@ async function loadMonthly(btn) {
       sb.from('deposits').select('unit_id,amount,refund_amount,refund_date,tenant_name,apartment,room')
         .gt('refund_amount', 0)
         .gte('refund_date', monStart)
-        .lte('refund_date', monEnd)
+        .lte('refund_date', monEnd),
+      // unit_history — لمعرفة من كان المستأجر في هذا الشهر تاريخياً
+      sb.from('unit_history').select('unit_id,tenant_name,monthly_rent,start_date,end_date').lte('start_date', monEnd).gte('end_date', monStart)
     ]);
     var units        = unitsRes.data||[];
     var pendingMoves = pendingMovesRes ? (pendingMovesRes.data||[]) : [];
-    // Build map: unit_id → pending move (for future tenant name)
+    var historyRows  = historyRes ? (historyRes.data||[]) : [];
+
+    // historyMap: unit_id → tenant info في الشهر المطلوب
+    // لو الوحدة اتغيّر مستأجرها، نعرف مين كان موجود فعلاً
+    var historyMap = {};
+    historyRows.forEach(function(h){
+      if(h.unit_id) historyMap[h.unit_id] = h;
+    });
+
+    // للوحدات اللي عندها سجل تاريخي في هذا الشهر — نستخدم الاسم التاريخي
+    units = units.map(function(u){
+      var h = historyMap[u.id];
+      if(h && h.tenant_name) {
+        return Object.assign({}, u, {
+          tenant_name: h.tenant_name,
+          monthly_rent: h.monthly_rent || u.monthly_rent,
+          _historical: true
+        });
+      }
+      return u;
+    });
+
+    // pendingMoves used only for display badge — NOT for overriding tenant names
     var pendingMoveMap = {};
     pendingMoves.forEach(function(m){
       if(m.unit_id) pendingMoveMap[m.unit_id] = m;
-    });
-    // Determine effective tenant name per unit for this month
-    units = units.map(function(u){
-      var pm = pendingMoveMap[u.id];
-      if(pm) {
-        var moveDate = pm.new_start_date || pm.move_date;
-        var moveMon = moveDate ? moveDate.slice(0,7) : null;
-        var reportMon = mon.slice(0,7);
-        if(moveMon && moveMon <= reportMon) {
-          // New tenant takes over this month
-          return Object.assign({}, u, {
-            tenant_name: pm.new_tenant_name || pm.tenant_name,
-            monthly_rent: pm.new_rent || u.monthly_rent,
-            _pendingTenant: true
-          });
-        }
-      }
-      return u;
     });
     var pays         = paysRes.data||[];
     var exps         = expsRes.data||[];
