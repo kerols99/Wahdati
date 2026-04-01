@@ -418,178 +418,144 @@ async function loadExpRpt(btn) {
 async function loadDepRpt(btn) {
   var orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
-    // Detect mode: check if month filter exists
-    var monEl = document.getElementById('rdep-month');
-    var filterMon = monEl ? (monEl.value||'').slice(0,7) : '';
-    var modeThisMonth = !!filterMon;
-
-    var { data: units } = await sb.from('units')
-      .select('id,apartment,room,tenant_name,tenant_name2,is_vacant,deposit,start_date')
-      .eq('is_vacant', false)
-      .order('apartment', {ascending:true});
-
-    // Fetch all deposits with amount > 0
-    // Fetch ALL deposits (for "already registered" check)
-    var { data: allDeps } = await sb.from('deposits').select('*').gt('amount',0);
+    var { data: allDeps } = await sb.from('deposits').select('*').gt('amount',0).order('deposit_received_date',{ascending:false});
     if(!allDeps) allDeps=[];
 
-    // For display: filter by month if needed
-    var deps = allDeps;
-    if(modeThisMonth) {
-      deps = allDeps.filter(function(d) {
-        var rd = String(d.deposit_received_date || '').slice(0, 7);
-        return rd === filterMon;
-      });
-    }
+    var { data: units } = await sb.from('units').select('id,apartment,room,tenant_name,deposit,start_date').eq('is_vacant',false);
     if(!units) units=[];
-
-    // Build map with fallback priority:
-    // 1) exact unit_id
-    // 2) apartment-room from deposit row itself
-    // This prevents losing names / apartment numbers for orphan deposit rows.
     var unitById = {};
-    var unitByKey = {};
-    (units||[]).forEach(function(u){
-      unitById[u.id] = u;
-      unitByKey[String(u.apartment)+'-'+String(u.room)] = u;
+    units.forEach(function(u){ unitById[u.id]=u; });
+
+    // ── حذف التكرار: نفس unit_id + نفس tenant_name + نفس amount = نفس التأمين
+    var seen = new Set();
+    var dedupedDeps = allDeps.filter(function(d){
+      var key = (d.unit_id||'') + '|' + (d.tenant_name||'') + '|' + (d.amount||0) + '|' + (d.status||'');
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
-    var seenDepIds = new Set();
-    var groups = {};
-    var grandTotal = 0;
+    // ── تقسيم لـ 3 مجموعات
+    var held     = dedupedDeps.filter(function(d){ return d.status==='held' && !(d.refund_amount>0); });
+    var partial  = dedupedDeps.filter(function(d){ return d.status==='held' && d.refund_amount>0; });
+    var refunded = dedupedDeps.filter(function(d){ return d.status==='refunded'; });
+    var forfeited= dedupedDeps.filter(function(d){ return d.status==='forfeited'; });
 
-    deps.forEach(function(d){
-      if(seenDepIds.has(d.id)) return;
-      seenDepIds.add(d.id);
+    var totalHeld     = held.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+    var totalPartial  = partial.reduce(function(s,d){return s+(Number(d.amount)||0) - (Number(d.refund_amount)||0);},0);
+    var totalRefunded = refunded.reduce(function(s,d){return s+(Number(d.refund_amount)||d.amount||0);},0);
+    var totalForfeited= forfeited.reduce(function(s,d){return s+(Number(d.amount)||0);},0);
+    var totalActive   = totalHeld + totalPartial;
 
-      var linkedUnit = null;
-      if(d.unit_id && unitById[d.unit_id]) linkedUnit = unitById[d.unit_id];
-      if(!linkedUnit){
-        var depKey = String(d.apartment||'') + '-' + String(d.room||'');
-        if(unitByKey[depKey]) linkedUnit = unitByKey[depKey];
-      }
+    function depRow(d) {
+      var u = d.unit_id ? unitById[d.unit_id] : null;
+      var apt  = u ? String(u.apartment) : String(d.apartment||'—');
+      var room = u ? String(u.room)      : String(d.room||'—');
+      var name = d.tenant_name || (u && u.tenant_name) || '—';
+      var dt   = (d.deposit_received_date||'').slice(0,10);
+      var refDt= (d.refund_date||'').slice(0,10);
+      var net  = Number(d.amount||0) - Number(d.refund_amount||0);
+      return '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:10px 13px;border-bottom:1px solid var(--border)22;gap:8px">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:.82rem;font-weight:700">'+(LANG==='ar'?'شقة ':'Apt ')+escapeHtml(apt)+' — '+(LANG==='ar'?'غرفة ':'Rm ')+escapeHtml(room)+'</div>'
+        +'<div style="font-size:.76rem;color:var(--text);margin-top:1px">'+escapeHtml(name)+'</div>'
+        +(dt?'<div style="font-size:.68rem;color:var(--muted);margin-top:1px">📅 '+dt+'</div>':'')
+        +(d.refund_amount>0 && refDt?'<div style="font-size:.68rem;color:var(--muted)">↩️ '+refDt+'</div>':'')
+        +(d.notes && d.notes.indexOf('عربون')<0?'<div style="font-size:.67rem;color:var(--muted)">'+escapeHtml(d.notes)+'</div>':'')
+        +'</div>'
+        +'<div style="text-align:left;flex-shrink:0;min-width:80px">'
+        +'<div style="font-weight:700;font-size:.88rem;color:var(--accent)">'+(d.amount||0)+' AED</div>'
+        +(d.refund_amount>0?'<div style="font-size:.7rem;color:var(--red)">↩️ '+(d.refund_amount)+' AED</div>':'')
+        +(d.refund_amount>0?'<div style="font-size:.72rem;color:var(--green);font-weight:700">'+(LANG==='ar'?'متبقي: ':'Net: ')+net+' AED</div>':'')
+        +(d.deduction_amount>0?'<div style="font-size:.68rem;color:var(--amber)">'+(LANG==='ar'?'خصم: ':'Ded: ')+d.deduction_amount+' AED</div>':'')
+        +'</div>'
+        +'</div>';
+    }
 
-      var aptVal = linkedUnit ? linkedUnit.apartment : (d.apartment || '—');
-      var roomVal = linkedUnit ? linkedUnit.room : (d.room || '—');
-      var tenantVal = (d.tenant_name || (linkedUnit && (linkedUnit.tenant_name || linkedUnit.tenant_name2)) || '—');
-      var apt = String(aptVal || '—');
-      if(!groups[apt]) groups[apt] = { items: [], total: 0 };
-
-      groups[apt].items.push({
-        unit: linkedUnit,
-        apt: aptVal,
-        room: roomVal,
-        tenant: tenantVal,
-        dep: d
-      });
-      groups[apt].total += Number(d.amount || 0);
-      grandTotal += Number(d.amount || 0);
-    });
+    function section(title, color, icon, items, total, extraNote) {
+      if(!items.length) return '';
+      var html = '<div style="margin-bottom:16px">';
+      html += '<div style="background:'+color+'22;border-right:3px solid '+color+';border-radius:10px 10px 0 0;padding:10px 14px;display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-weight:800;font-size:.85rem;color:'+color+'">'+icon+' '+title+' ('+items.length+')</span>'
+        +'<span style="font-weight:800;font-size:.88rem;color:'+color+'">'+total.toLocaleString()+' AED</span>'
+        +'</div>';
+      if(extraNote) html += '<div style="background:'+color+'11;padding:5px 14px;font-size:.7rem;color:var(--muted)">'+extraNote+'</div>';
+      html += '<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px">';
+      items.forEach(function(d){ html += depRow(d); });
+      html += '</div></div>';
+      return html;
+    }
 
     var html = '';
 
-    // Mode label
-    if(modeThisMonth) {
-      html += '<div style="background:var(--accent)22;border:1px solid var(--accent);border-radius:10px;padding:8px 12px;margin-bottom:12px;font-size:.78rem;color:var(--accent2);font-weight:600">🗓️ '
-        +(LANG==='ar'?'تأمينات شهر ':'Deposits for month ')+filterMon+'</div>';
-    }
-
-    Object.keys(groups).sort(function(a,b){
-      var na = Number(a), nb = Number(b);
-      if(!isNaN(na) && !isNaN(nb)) return na - nb;
-      return String(a).localeCompare(String(b));
-    }).forEach(function(apt){
-      var g = groups[apt];
-      html += '<div style="margin-bottom:14px">'
-        +'<div style="background:var(--surf2);border-radius:10px 10px 0 0;padding:8px 12px;border-right:3px solid var(--accent);display:flex;justify-content:space-between;align-items:center">'
-        +'<span style="font-weight:700;font-size:.85rem">🏢 '+(LANG==='ar'?'شقة':'Apt')+' '+escapeHtml(apt)+'</span>'
-        +'<span style="font-size:.8rem;color:var(--accent);font-weight:700">'+g.total+' AED</span>'
-        +'</div>'
-        +'<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px">';
-
-      g.items.forEach(function(item){
-        var d = item.dep;
-        var sCol = d.status==='held'?'var(--amber)':d.status==='refunded'?'var(--green)':'var(--red)';
-        var sTxt = d.status==='held'?(LANG==='ar'?'محتجز':'Held')
-                 : d.status==='refunded'?(LANG==='ar'?'مُرتجع':'Refunded')
-                 : (LANG==='ar'?'مُصادر':'Forfeited');
-        var rdStr = (d.deposit_received_date||'').slice(0,10);
-        var unitText = (LANG==='ar'?'شقة ':'Apt ') + escapeHtml(String(item.apt||'—')) + ' — ' + (LANG==='ar'?'غرفة ':'Room ') + escapeHtml(String(item.room||'—'));
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border)22;gap:8px">'
-          +'<div>'
-          +'<div style="font-size:.82rem;font-weight:600">'+unitText+'</div>'
-          +'<div style="font-size:.76rem;color:var(--text)">'+escapeHtml(item.tenant||'—')+'</div>'
-          +(rdStr?'<div style="font-size:.7rem;color:var(--muted)">📅 '+rdStr+'</div>':'')
-          +(d.deduction_amount?'<div style="font-size:.7rem;color:var(--muted)">'+(LANG==='ar'?'خصم:':'Ded:')+' '+d.deduction_amount+' AED</div>':'')
-          +(d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+escapeHtml(d.notes)+'</div>':'')
-          +'</div>'
-          +'<div style="text-align:left;min-width:84px">'
-          +'<div style="font-weight:700;color:var(--accent)">'+d.amount+' AED</div>'
-          +'<div style="font-size:.7rem;color:'+sCol+';font-weight:600">'+sTxt+'</div>'
-          +(d.refund_amount>0 && d.status!=='refunded'?'<div style="font-size:.68rem;color:var(--red);font-weight:600">↩️ '+(LANG==='ar'?'مُرجَع:':'Refunded:')+' '+d.refund_amount+' AED</div>':'')
-          +(d.refund_amount>0 && d.status!=='refunded'?'<div style="font-size:.65rem;color:var(--green);font-weight:600">'+(LANG==='ar'?'متبقي:':'Remaining:')+' '+(d.amount-d.refund_amount)+' AED</div>':'')
-          +(d.refund_date && d.refund_amount>0 && d.status!=='refunded'?'<div style="font-size:.63rem;color:var(--muted)">📅 '+d.refund_date.slice(0,10)+'</div>':'')
-          +'</div>'
-          +'</div>';
-      });
-
-      html += '</div></div>';
-    });
-
-
-    // ── Missing deposits (reference only) ──
-    if(!modeThisMonth) {
-      // Use ALL deposits (not filtered) to determine if unit is "registered"
-      var allDepUids = new Set(allDeps.filter(function(d){return d.status!=='refunded';}).map(function(d){return d.unit_id;}));
-      var missing = (units||[]).filter(function(u){ return (u.deposit||0)>0 && !allDepUids.has(u.id); });
-      if(missing.length > 0) {
-        var mTotal = missing.reduce(function(s,u){return s+(u.deposit||0);},0);
-        var mGroups={};
-        missing.forEach(function(u){ var a=String(u.apartment); if(!mGroups[a])mGroups[a]={items:[],total:0}; mGroups[a].items.push(u); mGroups[a].total+=u.deposit||0; });
-        html += '<div style="margin-top:14px">';
-        html += '<div style="background:var(--amber)22;border:1px solid var(--amber)44;border-radius:10px;padding:9px 13px;margin-bottom:8px">';
-        html += '<div style="font-weight:700;font-size:.82rem;color:var(--amber)">⚠️ تأمينات مرجعية غير مسجّلة (' +missing.length+ ' وحدة)</div>';
-        html += '<div style="font-size:.7rem;color:var(--muted);margin-top:2px">عندها deposit في بيانات الوحدة بس مش في جدول التأمينات</div></div>';
-        Object.keys(mGroups).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(apt){
-          var mg=mGroups[apt];
-          html += '<div style="margin-bottom:8px">'
-            +'<div style="background:var(--surf2);border-radius:8px 8px 0 0;padding:7px 12px;border-right:3px solid var(--amber);display:flex;justify-content:space-between">'
-            +'<b style="font-size:.82rem">شقة '+apt+'</b><span style="color:var(--amber);font-weight:700">'+mg.total+' AED</span></div>'
-            +'<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px">';
-          mg.items.forEach(function(u){
-            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border)22">'
-              +'<div><div style="font-size:.8rem;font-weight:600">غرفة '+u.room+' — '+(u.tenant_name||'—')+'</div>'
-              +'<div style="font-size:.68rem;color:var(--amber)">مرجعي — يحتاج تسجيل</div></div>'
-              +'<div style="display:flex;align-items:center;gap:8px">'
-              +'<b style="color:var(--amber)">'+(u.deposit||0)+' AED</b>'
-              +'<button onclick="window._qrd={apt:'+u.apartment+',room:\''+u.room+'\',amt:'+(u.deposit||0)+',name:\''+escapeHtml(u.tenant_name||'')+'\',startDate:\''+((u.start_date||'').slice(0,10))+'\'};quickRegisterDeposit('+u.apartment+',\''+u.room+'\','+(u.deposit||0)+',\''+escapeHtml(u.tenant_name||'')+'\')" '
-              +'style="padding:4px 10px;background:var(--green)22;border:1px solid var(--green);border-radius:8px;color:var(--green);font-size:.7rem;font-family:var(--font);cursor:pointer">＋ سجّل</button>'
-              +'</div></div>';
-          });
-          html += '</div></div>';
-        });
-        html += '<div style="background:var(--amber)18;border-radius:8px;padding:9px 14px;display:flex;justify-content:space-between">'
-          +'<b style="color:var(--amber)">إجمالي غير المسجّل</b>'
-          +'<b style="color:var(--amber)">'+mTotal+' AED</b></div>';
-        html += '</div>';
-      }
-    }
-
-    // Grand total
-    html += '<div style="background:var(--surf2);border-radius:10px;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">'
-      +'<span style="font-weight:700">'+(LANG==='ar'?'إجمالي التأمينات':'Total Deposits')+'</span>'
-      +'<span style="font-weight:700;color:var(--accent);font-size:1rem">'+grandTotal+' AED</span>'
+    // ── KPI Summary ──
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">'
+      +'<div style="background:var(--amber)15;border:1.5px solid var(--amber)44;border-radius:12px;padding:12px;text-align:center">'
+      +'<div style="font-size:1.2rem;font-weight:800;color:var(--amber)">'+totalActive.toLocaleString()+'</div>'
+      +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">🔒 '+(LANG==='ar'?'إجمالي المحتجز':'Total Held')+'</div>'
+      +'<div style="font-size:.62rem;color:var(--muted)">'+(held.length+partial.length)+' '+(LANG==='ar'?'تأمين':'deposits')+'</div>'
+      +'</div>'
+      +'<div style="background:var(--green)15;border:1.5px solid var(--green)44;border-radius:12px;padding:12px;text-align:center">'
+      +'<div style="font-size:1.2rem;font-weight:800;color:var(--green)">'+totalRefunded.toLocaleString()+'</div>'
+      +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">↩️ '+(LANG==='ar'?'إجمالي المرتجع':'Total Refunded')+'</div>'
+      +'<div style="font-size:.62rem;color:var(--muted)">'+refunded.length+' '+(LANG==='ar'?'تأمين':'deposits')+'</div>'
+      +'</div>'
+      +(totalForfeited>0
+        ?'<div style="background:var(--red)15;border:1.5px solid var(--red)44;border-radius:12px;padding:12px;text-align:center;grid-column:1/-1">'
+        +'<div style="font-size:1.1rem;font-weight:800;color:var(--red)">'+totalForfeited.toLocaleString()+'</div>'
+        +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">🚫 '+(LANG==='ar'?'مصادر':'Forfeited')+'</div>'
+        +'</div>':''
+      )
       +'</div>';
 
-    document.getElementById('rDepOut').innerHTML = grandTotal > 0 ? html
-      : '<div style="text-align:center;padding:20px;color:var(--muted)">'+(LANG==='ar'?'لا توجد تأمينات':'No deposits')+'</div>';
+    // ── الأقسام الثلاثة ──
+    html += section(
+      LANG==='ar'?'تأمينات محتجزة كاملة':'Fully Held',
+      'var(--amber)', '🔒', held, totalHeld
+    );
+    html += section(
+      LANG==='ar'?'استرداد جزئي':'Partially Refunded',
+      'var(--accent)', '⚡', partial, totalPartial,
+      LANG==='ar'?'المبلغ المعروض = المتبقي بعد الخصم':'Amount shown = remaining after deduction'
+    );
+    html += section(
+      LANG==='ar'?'تأمينات مُرتجعة':'Refunded',
+      'var(--green)', '↩️', refunded, totalRefunded
+    );
+    html += section(
+      LANG==='ar'?'تأمينات مُصادرة':'Forfeited',
+      'var(--red)', '🚫', forfeited, totalForfeited
+    );
+
+    // ── تأمينات غير مسجّلة ──
+    var allDepUids = new Set(dedupedDeps.filter(function(d){return d.status!=='refunded';}).map(function(d){return String(d.unit_id);}));
+    var missing = units.filter(function(u){ return (u.deposit||0)>0 && !allDepUids.has(String(u.id)); });
+    if(missing.length > 0) {
+      var mTotal = missing.reduce(function(s,u){return s+(u.deposit||0);},0);
+      html += '<div style="background:var(--amber)15;border:1.5px solid var(--amber)44;border-radius:12px;padding:0;overflow:hidden;margin-bottom:12px">'
+        +'<div style="padding:10px 14px;border-bottom:1px solid var(--amber)33;display:flex;justify-content:space-between">'
+        +'<span style="font-weight:700;font-size:.82rem;color:var(--amber)">⚠️ '+(LANG==='ar'?'غير مسجّلة':'Not Registered')+' ('+missing.length+')</span>'
+        +'<span style="font-weight:700;color:var(--amber)">'+mTotal+' AED</span>'
+        +'</div>';
+      missing.forEach(function(u){
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border)22">'
+          +'<div><div style="font-size:.8rem;font-weight:600">شقة '+u.apartment+' — غرفة '+u.room+'</div>'
+          +'<div style="font-size:.72rem;color:var(--muted)">'+escapeHtml(u.tenant_name||'—')+'</div></div>'
+          +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<b style="color:var(--amber)">'+(u.deposit||0)+' AED</b>'
+          +'<button onclick="window._qrd={apt:'+u.apartment+',room:\''+u.room+'\',amt:'+(u.deposit||0)+',name:\''+escapeHtml(u.tenant_name||'')+'\',startDate:\''+((u.start_date||'').slice(0,10))+'\'};quickRegisterDeposit('+u.apartment+',\''+u.room+'\','+(u.deposit||0)+',\''+escapeHtml(u.tenant_name||'')+'\')"
+          style="padding:4px 10px;background:var(--green)22;border:1px solid var(--green);border-radius:8px;color:var(--green);font-size:.7rem;font-family:var(--font);cursor:pointer">+ سجّل</button>'
+          +'</div></div>';
+      });
+      html += '</div>';
+    }
+
+    document.getElementById('rDepOut').innerHTML = html ||
+      '<div style="text-align:center;padding:20px;color:var(--muted)">'+(LANG==='ar'?'لا توجد تأمينات':'No deposits')+'</div>';
 
   } catch(e){ toast(e.message,'err'); console.error('loadDepRpt:',e); }
   finally{ btn.disabled=false; btn.innerHTML=orig; }
 }
-
-
-window.loadDepRpt = loadDepRpt;
 
 // ══════════════════════════════════════════════════════
 // FINANCIAL SUMMARY REPORT
