@@ -40,7 +40,7 @@ async function loadMonthly(btn) {
     var monStart = (mon||'').slice(0,7)+'-01';
     var monEnd   = window.monthEnd((mon||'').slice(0,7));
     var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, historyRes] = await Promise.all([
-      sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').eq('is_vacant',false).order('apartment'),
+      sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
       sb.from('expenses').select('amount,category,description,receipt_no,period_month').eq('period_month', monStart),
@@ -146,12 +146,19 @@ async function loadMonthly(btn) {
     // apt.coll = rent + deposit (what was actually received)
     var apts = {};
     units.forEach(function(u){
+      // الوحدات الفاضية: تدخل في التقرير بس لو عندها مدفوعات في هذا الشهر
+      if(u.is_vacant && !paidMap[u.id] && !depMap[u.id]) return;
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
-      apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
-      apts[apt].rent     += u.monthly_rent||0;
-      apts[apt].rentColl += paidMap[u.id]||0;           // rent only
-      apts[apt].coll     += (paidMap[u.id]||0) + (depMap[u.id]||0); // rent + deposit
+      // الوحدة الفاضية: خذ الإيجار والاسم من unit_history
+      var h = historyMap[u.id];
+      var displayUnit = u.is_vacant && h
+        ? Object.assign({}, u, { tenant_name: h.tenant_name, monthly_rent: h.monthly_rent || u.monthly_rent })
+        : u;
+      apts[apt].units.push({...displayUnit, _isNew: isNewForMonth(u.start_date||'')});
+      apts[apt].rent     += (u.is_vacant ? 0 : (u.monthly_rent||0)); // الفاضية مش مستهدفة
+      apts[apt].rentColl += paidMap[u.id]||0;
+      apts[apt].coll     += (paidMap[u.id]||0) + (depMap[u.id]||0);
       apts[apt].deps     += depMap[u.id]||0;
     });
 
