@@ -1,4 +1,36 @@
 
+// ══════════════════════════════════════════════════════
+// archiveUnitToHistory — يحفظ snapshot قبل أي تغيير
+// لو فشل الحفظ: throw error — مش تكمّل العملية
+// ══════════════════════════════════════════════════════
+async function archiveUnitToHistory(unitId, endDate, snapshotType) {
+  if(!unitId) return;
+  var { data: curr, error: fetchErr } = await sb.from('units')
+    .select('*').eq('id', unitId).maybeSingle();
+  if(fetchErr) throw new Error('archiveUnitToHistory fetch failed: ' + fetchErr.message);
+  if(!curr || curr.is_vacant || !curr.tenant_name) return; // فاضية — مفيش حاجة تتحفظ
+
+  var { error: histErr } = await sb.from('unit_history').insert({
+    unit_id:       unitId,
+    apartment:     String(curr.apartment),
+    room:          String(curr.room),
+    tenant_name:   curr.tenant_name,
+    tenant_name2:  curr.tenant_name2 || null,
+    phone:         curr.phone || null,
+    phone2:        curr.phone2 || null,
+    monthly_rent:  curr.monthly_rent || 0,
+    deposit:       curr.deposit || 0,
+    start_date:    curr.start_date || null,
+    end_date:      endDate || new Date().toISOString().slice(0,10),
+    snapshot_type: snapshotType || 'departure',
+    recorded_by:   (ME||{}).id || null,
+  });
+  if(histErr) throw new Error('archiveUnitToHistory insert failed: ' + histErr.message);
+  console.log('✅ unit_history saved:', curr.apartment + '/' + curr.room, '-', curr.tenant_name);
+}
+window.archiveUnitToHistory = archiveUnitToHistory;
+
+
 // ══ MOVES ══
 
 
@@ -376,30 +408,10 @@ async function saveArrivalEntry(btn){
     var isFutureBooking = date && new Date(date) > new Date();
     if(isFutureBooking) doUpdate = false; // Don't overwrite unit until move-in date
 
-    // 1. Archive old tenant data to unit_history
+    // 1. Archive old tenant data to unit_history — يحفظ أولاً قبل التحديث
     if(unitId && doUpdate) {
-      var rUnit = await sb.from('units').select('*').eq('id',unitId).maybeSingle();
-      if(rUnit.data) {
-        var old = rUnit.data;
-        await sb.from('unit_history').insert({
-          unit_id: unitId,
-          apartment: old.apartment,
-          room: old.room,
-          tenant_name: old.tenant_name,
-          tenant_name2: old.tenant_name2,
-          phone: old.phone,
-          phone2: old.phone2,
-          monthly_rent: old.monthly_rent,
-          rent1: old.rent1,
-          rent2: old.rent2,
-          deposit: old.deposit,
-          persons_count: old.persons_count,
-          start_date: old.start_date,
-          end_date: date || new Date().toISOString().split('T')[0],
-          snapshot_type: 'departure',
-          recorded_by: (ME||{}).id || null
-        });
-      }
+      // لو فشل الحفظ → throw error ومش بيكمّل
+      await archiveUnitToHistory(unitId, date || new Date().toISOString().slice(0,10), 'departure');
 
       // 2. Update unit with new tenant
       var updatePayload = {
@@ -407,7 +419,7 @@ async function saveArrivalEntry(btn){
         tenant_name2: null,
         phone: phone||null,
         phone2: null,
-        monthly_rent: rent||old.monthly_rent,
+        monthly_rent: rent||0,
         rent1: rent||0,
         rent2: 0,
         deposit: deposit||0,
@@ -1583,20 +1595,12 @@ async function confirmArrival(moveId, unitId) {
     if(!move) { toast('Move not found','err'); return; }
     var { data: unit } = await sb.from('units').select('*').eq('id', parseInt(unitId)).single();
 
-    // Archive old tenant
-    if(unit && unit.tenant_name) {
-      await sb.from('unit_history').insert({
-        unit_id: parseInt(unitId),
-        apartment: unit.apartment, room: unit.room,
-        tenant_name: unit.tenant_name, tenant_name2: unit.tenant_name2,
-        phone: unit.phone, phone2: unit.phone2,
-        monthly_rent: unit.monthly_rent, rent1: unit.rent1, rent2: unit.rent2,
-        deposit: unit.deposit, persons_count: unit.persons_count,
-        start_date: unit.start_date,
-        end_date: move.move_date || new Date().toISOString().slice(0,10),
-        snapshot_type: 'departure', recorded_by: ME ? ME.id : null
-      });
-    }
+    // Archive old tenant — يحفظ أولاً، لو فشل throw error
+    await archiveUnitToHistory(
+      parseInt(unitId),
+      move.move_date || new Date().toISOString().slice(0,10),
+      'departure'
+    );
 
     // Update unit with new tenant
     await sb.from('units').update({
@@ -1656,31 +1660,9 @@ async function confirmScheduledTransfer(transferId, fromSnapshot, toSnapshot, fr
     var t = toSnapshot;
     var date = new Date().toISOString().slice(0,10);
 
-    // Archive fromUnit to unit_history
-    await sb.from('unit_history').insert({
-      unit_id: fromId, apartment: parseInt(f.apartment)||0, room: parseInt(f.room)||0,
-      tenant_name: f.tenant_name, tenant_name2: f.tenant_name2,
-      phone: f.phone, phone2: f.phone2,
-      monthly_rent: f.monthly_rent, rent1: f.rent1, rent2: f.rent2,
-      deposit: f.deposit, persons_count: f.persons_count,
-      start_date: f.start_date, end_date: date,
-      notes: 'نقل داخلي إلى شقة '+t.apartment+' غرفة '+t.room,
-      snapshot_type: 'internal_transfer_out', recorded_by: ME ? ME.id : null
-    });
-
-    // Archive toUnit to unit_history
-    if(t.tenant_name) {
-      await sb.from('unit_history').insert({
-        unit_id: toId, apartment: parseInt(t.apartment)||0, room: parseInt(t.room)||0,
-        tenant_name: t.tenant_name, tenant_name2: t.tenant_name2,
-        phone: t.phone, phone2: t.phone2,
-        monthly_rent: t.monthly_rent, rent1: t.rent1, rent2: t.rent2,
-        deposit: t.deposit, persons_count: t.persons_count,
-        start_date: t.start_date, end_date: date,
-        notes: 'تم استبداله بنقل داخلي من شقة '+f.apartment+' غرفة '+f.room,
-        snapshot_type: 'internal_transfer_displaced', recorded_by: ME ? ME.id : null
-      });
-    }
+    // Archive الوحدتين أولاً — لو فشل throw error ومش بيكمّل
+    await archiveUnitToHistory(fromId, date, 'departure');
+    await archiveUnitToHistory(toId, date, 'departure');
 
     // Update toUnit with fromUnit tenant
     await sb.from('units').update({

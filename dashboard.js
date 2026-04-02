@@ -876,6 +876,17 @@ async function activateReservedUnits() {
             continue; // still can't find unit — skip
           }
         }
+        // حفظ التاريخ أولاً قبل التحديث — لو فشل skip هذا الـ move
+        try {
+          await window.archiveUnitToHistory(
+            parseInt(mv.unit_id),
+            mv.new_start_date || mv.move_date || new Date().toISOString().slice(0,10),
+            'departure'
+          );
+        } catch(archErr) {
+          console.error('archiveUnitToHistory failed for move', mv.id, archErr.message);
+          continue; // مش هنحدّث الوحدة لو ما اتحفظش التاريخ
+        }
         // Update unit with new tenant
         await sb.from('units').update({
           tenant_name: mv.new_tenant_name || mv.tenant_name,
@@ -932,6 +943,14 @@ async function activateReservedUnits() {
         var tr = pendingTransfers[k];
         var f = tr.from_snapshot || {};
         var t = tr.to_snapshot || {};
+        // حفظ التاريخ للوحدتين أولاً
+        try {
+          await window.archiveUnitToHistory(tr.from_unit_id, tr.transfer_date, 'departure');
+          await window.archiveUnitToHistory(tr.to_unit_id, tr.transfer_date, 'departure');
+        } catch(archErr) {
+          console.error('archiveUnitToHistory failed for transfer', tr.id, archErr.message);
+          continue;
+        }
         // Update toUnit with fromUnit tenant
         await sb.from('units').update({
           tenant_name: f.tenant_name, tenant_name2: f.tenant_name2,
