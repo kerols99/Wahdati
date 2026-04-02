@@ -150,13 +150,28 @@ async function loadMonthly(btn) {
       if(u.is_vacant && !paidMap[u.id] && !depMap[u.id]) return;
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
-      // الوحدة الفاضية: خذ الإيجار والاسم من unit_history
+      // لو في unit_history في هذا الشهر — استخدم بيانات المستأجر القديم
       var h = historyMap[u.id];
-      var displayUnit = u.is_vacant && h
+      var hasHistory = h && h.tenant_name;
+      // لو المستأجر الحالي دخل بعد نهاية الشهر المطلوب — الوحدة كانت فاضية أو في مستأجر قديم
+      var currentTenantStartedAfterMonth = u.start_date && u.start_date.slice(0,7) > monYM;
+      var displayUnit = hasHistory
         ? Object.assign({}, u, { tenant_name: h.tenant_name, monthly_rent: h.monthly_rent || u.monthly_rent })
         : u;
+      // لو المستأجر الحالي دخل بعد الشهر ومفيش مستأجر قديم — متظهرش في التقرير
+      if(currentTenantStartedAfterMonth && !hasHistory && !paidMap[u.id] && !depMap[u.id]) return;
       apts[apt].units.push({...displayUnit, _isNew: isNewForMonth(u.start_date||'')});
-      apts[apt].rent     += (u.is_vacant ? 0 : (u.monthly_rent||0)); // الفاضية مش مستهدفة
+      // المستهدف:
+      // - لو في تاريخ → إيجار المستأجر القديم
+      // - لو المستأجر الحالي دخل بعد الشهر → 0 (كانت فاضية)
+      // - لو فاضية → 0
+      // - لو حالي → إيجاره
+      var targetRent = hasHistory
+        ? (h.monthly_rent || u.monthly_rent)
+        : (currentTenantStartedAfterMonth || u.is_vacant)
+          ? 0
+          : (u.monthly_rent||0);
+      apts[apt].rent     += targetRent;
       apts[apt].rentColl += paidMap[u.id]||0;
       apts[apt].coll     += (paidMap[u.id]||0) + (depMap[u.id]||0);
       apts[apt].deps     += depMap[u.id]||0;
