@@ -448,18 +448,16 @@ async function loadDepRpt(btn) {
     var { data: allDeps } = await sb.from('deposits').select('*').gt('amount',0).order('deposit_received_date',{ascending:false});
     if(!allDeps) allDeps=[];
 
-    var { data: units } = await sb.from('units').select('id,apartment,room,tenant_name,deposit,start_date').eq('is_vacant',false);
+    var { data: units } = await sb.from('units').select('id,apartment,room,tenant_name,deposit,start_date');
     if(!units) units=[];
     var unitById = {};
     units.forEach(function(u){ unitById[u.id]=u; });
 
-    // ── حذف التكرار: apartment+room+tenant+amount+status
-    // نستخدم apartment+room بدل unit_id لأن بعض السجلات القديمة unit_id فيها integer مش UUID
+    // ── حذف التكرار بـ id — كل سجل له id فريد
     var seen = new Set();
     var dedupedDeps = allDeps.filter(function(d){
-      var key = String(d.apartment||'') + '|' + String(d.room||'') + '|' + (d.tenant_name||'') + '|' + (d.amount||0) + '|' + (d.status||'');
-      if(seen.has(key)) return false;
-      seen.add(key);
+      if(seen.has(d.id)) return false;
+      seen.add(d.id);
       return true;
     });
 
