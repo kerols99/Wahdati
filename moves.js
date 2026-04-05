@@ -608,7 +608,8 @@ async function loadMovesList(type) {
   if(!listEl) return;
   listEl.innerHTML = '<div style="text-align:center;padding:20px"><span class="spin"></span></div>';
   try {
-    var result = await sb.from('moves').select('*').eq('type', type).order('created_at', {ascending: false});
+    // نعرض بس pending — القديمة (done/cancelled) محفوظة في الـ DB للتقارير
+    var result = await sb.from('moves').select('*').eq('type', type).eq('status','pending').order('move_date', {ascending: true});
     if(result.error) throw result.error;
     var data = result.data || [];
     // Fetch units for rent info
