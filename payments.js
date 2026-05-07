@@ -1029,6 +1029,9 @@ function printPaymentReceipt() {
   var pdfEl = document.getElementById('pdf-content');
   var overlay = document.getElementById('pdfOverlay');
   if(pdfEl && overlay) {
+    // احفظ الـ panel النشط عشان ترجعله لما تقفل الإيصال
+    var _activePanel = document.querySelector('.panel.active');
+    window._pdfReturnPanel = _activePanel ? _activePanel.id : 'pHome';
     pdfEl.innerHTML = '<style>body,html{background:#fff;color:#111}</style>' + body;
     overlay.style.display = 'flex';
   } else {

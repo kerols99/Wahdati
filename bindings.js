@@ -64,7 +64,16 @@
         case 'sendWelcomeWA': return window.sendWelcomeWA && window.sendWelcomeWA();
         case 'closePdf':
           var pdf = document.getElementById('pdfOverlay');
-          if(pdf) pdf.style.display = 'none';
+          if(pdf) {
+            pdf.style.display = 'none';
+            var pdfContent = document.getElementById('pdf-content');
+            if(pdfContent) pdfContent.innerHTML = '';
+            // ارجع للشاشة اللي كانت قبل الإيصال
+            if(window._pdfReturnPanel && window.goPanel) {
+              window.goPanel(window._pdfReturnPanel);
+              window._pdfReturnPanel = null;
+            }
+          }
           return;
         case 'printPdf': return window.print && window.print();
       }
