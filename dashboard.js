@@ -841,6 +841,19 @@ async function activateReservedUnits() {
   if(window._activatingUnits) return;
   window._activatingUnits = true;
   try {
+    // daily check — مرة واحدة في اليوم بس
+    var today0 = new Date().toISOString().slice(0,10);
+    var lastRun = localStorage.getItem('_lastActivationRun');
+    // لو اشتغلت النهارده قبل كده — اخرج بدون ما تعمل حاجة
+    // بس لو عندنا pending departures نشغّل دايماً
+    var forceRun = false;
+    try {
+      var { count } = await sb.from('moves').select('id',{count:'exact',head:true})
+        .eq('type','depart').eq('status','pending').lte('move_date', today0);
+      if(count > 0) forceRun = true;
+    } catch(e) {}
+    if(!forceRun && lastRun === today0) { window._activatingUnits = false; return; }
+    localStorage.setItem('_lastActivationRun', today0);
     var today = new Date().toISOString().slice(0,10);
     // Find reserved units whose start_date has arrived
     var { data: toActivate } = await sb.from('units')
