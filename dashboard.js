@@ -842,7 +842,7 @@ async function activateReservedUnits() {
   window._activatingUnits = true;
   try {
     // daily check — مرة واحدة في اليوم بس
-    var today0 = new Date().toISOString().slice(0,10);
+    var _ld = new Date(); var today0 = _ld.getFullYear()+'-'+String(_ld.getMonth()+1).padStart(2,'0')+'-'+String(_ld.getDate()).padStart(2,'0');
     var lastRun = localStorage.getItem('_lastActivationRun');
     // لو اشتغلت النهارده قبل كده — اخرج بدون ما تعمل حاجة
     // بس لو عندنا pending departures نشغّل دايماً
@@ -857,7 +857,7 @@ async function activateReservedUnits() {
     } catch(e) {}
     if(!forceRun && lastRun === today0) { window._activatingUnits = false; return; }
     localStorage.setItem('_lastActivationRun', today0);
-    var today = new Date().toISOString().slice(0,10);
+    var _ld2 = new Date(); var today = _ld2.getFullYear()+'-'+String(_ld2.getMonth()+1).padStart(2,'0')+'-'+String(_ld2.getDate()).padStart(2,'0');
     // Find reserved units whose start_date has arrived
     var { data: toActivate } = await sb.from('units')
       .select('id,apartment,room,start_date')
@@ -873,7 +873,7 @@ async function activateReservedUnits() {
       toast('✅ تم تفعيل '+toActivate.length+' وحدة محجوزة', 'ok');
     }
 
-    var today2 = new Date().toISOString().slice(0,10);
+    var _ld3 = new Date(); var today2 = _ld3.getFullYear()+'-'+String(_ld3.getMonth()+1).padStart(2,'0')+'-'+String(_ld3.getDate()).padStart(2,'0');
 
     // ── Auto-execute مغادرات pending لو بدأ شهر جديد ──
     // لو move_date في الشهر الماضي أو أقدم → ننفّذها تلقائياً

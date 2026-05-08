@@ -1,6 +1,7 @@
 // caches
 var _paidMapCache = {};
 var _departMapCache = {};
+var _activeFilter = 'all';
 
 // ══ UNITS ══
 
