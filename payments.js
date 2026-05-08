@@ -78,6 +78,8 @@ async function autoFillDepDate() {
 async function autoFillRent() {
   if(window._afTimer) clearTimeout(window._afTimer);
   window._afTimer = setTimeout(async function() {
+    // لو المستأجر اتاختار يدوياً — لا تكتب فوقه
+    if(window._payTenantLocked) return;
     var apt  = (document.getElementById('r-apt')||{}).value||'';
     var room = (document.getElementById('r-room')||{}).value||'';
     if(!apt || !room) return;
@@ -481,6 +483,7 @@ function setPayTenant(num, btnOrApt, roomOrUndef, amtOrUndef, nameOrUndef, evt) 
     amt  = amtOrUndef;
     name = nameOrUndef;
   }
+  window._payTenantLocked = true; // منع autoFillRent من الكتابة فوق الاختيار
   goPanel('pay');
   // Wait for panel to render before setting values
   setTimeout(function(){
@@ -499,6 +502,8 @@ function setPayTenant(num, btnOrApt, roomOrUndef, amtOrUndef, nameOrUndef, evt) 
         badge.style.display = 'none';
       }
     }
+    // ارفع الـ lock بعد ما اتضبط كل حاجة
+    setTimeout(function(){ window._payTenantLocked = false; }, 600);
   }, 50);
 }
 
