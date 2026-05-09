@@ -523,7 +523,28 @@ async function saveMoveEntry(type, btn){
     };
     var ins = await sb.from('moves').insert(payload);
     if(ins.error) throw ins.error;
-    // Update unit_status to leaving_soon
+
+    // لو التاريخ في الماضي أو النهارده — نفّذ فوراً
+    var _todayD = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    var _moveDate = date || _todayD;
+    var _uid = unitId ? parseInt(unitId) : null;
+    if(_moveDate <= _todayD && _uid && ins.data && ins.data[0]) {
+      var execR = await sb.rpc('execute_departure', {
+        p_move_id:   ins.data[0].id,
+        p_unit_id:   _uid,
+        p_move_date: _moveDate
+      });
+      if(execR.data && execR.data.success) {
+        toast(LANG==='ar'?'✅ تم تسجيل المغادرة وتفريغ الوحدة':'✅ Departure executed','ok');
+        var modal = document.getElementById('move-modal');
+        if(modal) modal.remove();
+        if(window.loadHome) loadHome(null, true);
+        loadMovesList('depart');
+        return;
+      }
+    }
+
+    // لو التاريخ مستقبلي — ضع leaving_soon فقط
     if(unitId) {
       await sb.from('units').update({ unit_status: 'leaving_soon' }).eq('id', unitId);
     } else {
@@ -616,6 +637,25 @@ async function quickMarkDepartureFromUnit(unit){
       };
       var ins = await sb.from('moves').insert(payload);
       if(ins.error) throw ins.error;
+
+      // لو التاريخ في الماضي أو النهارده — نفّذ فوراً
+      var _today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+      if(dateVal <= _today && ins.data && ins.data[0]) {
+        var newMove = ins.data[0];
+        var execRes = await sb.rpc('execute_departure', {
+          p_move_id:   newMove.id,
+          p_unit_id:   unit.id,
+          p_move_date: dateVal
+        });
+        if(execRes.data && execRes.data.success) {
+          toast(LANG==='ar'?'✅ تم تسجيل المغادرة وتفريغ الوحدة':'✅ Departure executed','ok');
+          modal.remove();
+          if(window.loadHome) loadHome(null, true);
+          if(window.loadMovesList) loadMovesList('depart');
+          return;
+        }
+      }
+
       toast(t('markedDepartEndMonth'),'ok');
       modal.remove();
       if(window.loadMovesList) loadMovesList('depart');
