@@ -97,6 +97,12 @@ async function autoFillRent() {
         unit = unit2;
       }
       if(!unit) { console.log('autoFillRent: unit not found apt='+apt+' room='+room); return; }
+      // جيب الخصم النشط
+      var _discount = 0;
+      if(window.getActiveDiscount) {
+        var _disc = await getActiveDiscount(unit.id);
+        if(_disc) _discount = _disc.discount_amount||0;
+      }
       window._lastUnit = unit; // cache for receipt WhatsApp
 
       var amtEl   = document.getElementById('r-amt');
@@ -122,7 +128,7 @@ async function autoFillRent() {
             '<div style="margin-bottom:6px;font-size:.78rem;color:var(--muted)">👥 اختر من يدفع:</div>'
             +'<div style="display:flex;gap:8px">'
           badge.style.display = 'block';
-          var t1amt = unit.rent1||unit.monthly_rent||0;
+          var t1amt = Math.max(0,(unit.rent1||unit.monthly_rent||0)-_discount);
           var t2amt = unit.rent2||0;
           var t1name = escapeHtml(unit.tenant_name||'—');
           var t2name = escapeHtml(unit.tenant_name2||'—');
@@ -138,10 +144,10 @@ async function autoFillRent() {
             +'</div>';
         }
         // Fill with total rent by default
-        if(amtEl) amtEl.value = unit.monthly_rent || '';
+        if(amtEl) amtEl.value = Math.max(0,(unit.monthly_rent||0)-_discount) || '';
       } else {
         // Single tenant — auto-fill amount always
-        var fillAmt = unit.monthly_rent || unit.rent1 || 0;
+        var fillAmt = Math.max(0,(unit.monthly_rent||unit.rent1||0)-_discount);
         if(amtEl) {
           amtEl.value = fillAmt;
           amtEl.style.borderColor = 'var(--green)';

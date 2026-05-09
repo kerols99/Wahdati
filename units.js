@@ -402,7 +402,13 @@ var now = new Date();
   var totalPaid = (pays||[]).reduce((s,p)=>s+(p.amount||0),0);
   var paid1 = (pays||[]).filter(p=>p.tenant_num===1).reduce((s,p)=>s+(p.amount||0),0);
   var paid2 = (pays||[]).filter(p=>p.tenant_num===2).reduce((s,p)=>s+(p.amount||0),0);
-  var rem   = (unit.monthly_rent||0) - totalPaid;
+
+  // جيب الخصم النشط لو موجود
+  var activeDiscount = await getActiveDiscount(unitId);
+  var discountAmt = activeDiscount ? (activeDiscount.discount_amount||0) : 0;
+  var effectiveRent = Math.max(0, (unit.monthly_rent||0) - discountAmt);
+
+  var rem   = effectiveRent - totalPaid;
   // Last payment info for partial tracking
   var lastPay = (pays||[]).length > 0 ? pays[0] : null;
   var lastPayDate = lastPay ? (lastPay.payment_date||'').slice(0,10) : null;
@@ -414,9 +420,9 @@ var now = new Date();
   // NOTE: deposit shown only if real record exists in deposits table
   // No fallback to unit.deposit — that is reference data only
 
-  var statusColor = totalPaid>=(unit.monthly_rent||0)&&(unit.monthly_rent||0)>0
+  var statusColor = totalPaid>=effectiveRent&&effectiveRent>0
     ? 'var(--green)' : totalPaid>0 ? 'var(--amber)' : 'var(--red)';
-  var statusTxt = totalPaid>=(unit.monthly_rent||0)&&(unit.monthly_rent||0)>0
+  var statusTxt = totalPaid>=effectiveRent&&effectiveRent>0
     ? (LANG==='ar'?'مدفوعة':'Paid')
     : totalPaid>0 ? (LANG==='ar'?'جزئية':'Partial')
     : (LANG==='ar'?'غير مدفوعة':'Unpaid');
@@ -500,7 +506,7 @@ var now = new Date();
     + t2HTML
 
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'
-    + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الإيجار الشهري':'Monthly Rent')+'</div><div style="font-weight:700">'+(unit.monthly_rent||0)+' AED</div></div>'
+    + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الإيجار الشهري':'Monthly Rent')+'</div>'+(discountAmt>0?'<div style="text-decoration:line-through;color:var(--muted);font-size:.8rem">'+(unit.monthly_rent||0)+' AED</div><div style="font-weight:700;color:var(--green)">'+effectiveRent+' AED <span style="font-size:.65rem;color:var(--amber)">(-'+discountAmt+')</span></div>':'<div style="font-weight:700">'+(unit.monthly_rent||0)+' AED</div>')+'</div>'
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'المدفوع هذا الشهر':'Paid this month')+'</div><div style="font-weight:700;color:var(--green)">'+totalPaid+' AED</div></div>'
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'المتبقي':'Remaining')+'</div><div style="font-weight:700;color:'+(rem>0?'var(--red)':'var(--green)')+'">'+rem+' AED</div></div>'
     + '<div style="background:var(--surf2);border-radius:10px;padding:10px"><div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'الهاتف':'Phone')+'</div><div style="display:flex;align-items:center;gap:6px"><div style="font-weight:700;font-size:.78rem">'+(unit.phone||'—')+'</div>'+(unit.phone?'<button onclick="copyPhone(\''+unit.phone+'\')" style="padding:3px 8px;background:var(--surf3);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:.65rem;cursor:pointer;font-family:inherit">نسخ 📋</button>':'')+'</div></div>'
@@ -515,13 +521,14 @@ var now = new Date();
     + '<div><span style="color:var(--muted)">'+(LANG==='ar'?'حالة النافذة:':'Window:')+'</span> <span style="font-weight:600">'+(unit.window_status||'—')+'</span></div>'
     + '</div>'
     + depHTML
+    + '<button onclick="showDiscountModal(unit.id,unit.apartment,unit.room,unit.monthly_rent||0)" style="margin-bottom:8px;width:100%;padding:10px;background:var(--amber)22;border:1px solid var(--amber)55;border-radius:10px;color:var(--amber);font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">🏷️ '+(LANG==='ar'?'خصم مؤقت':'Temporary Discount')+(discountAmt>0?' ✅':'')+'</button>'
     + (scheduledDepart?'<div style="margin-top:8px;padding:8px 10px;border:1px solid var(--amber);border-radius:10px;background:var(--amber)11;font-size:.78rem;color:var(--amber)">📤 '+(LANG==='ar'?'مغادرة مسجلة: ':'Scheduled departure: ') + (scheduledDepart.move_date?new Date(scheduledDepart.move_date).toLocaleDateString(LANG==='ar'?'ar-EG':'en-GB'):'—') + '</div>':'')
     + (unit.notes?'<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:.75rem;color:var(--muted)">📝 '+unit.notes+'</div>':'')
     + '</div>'
     + '<div id="unit-imgs-section" style="margin-bottom:14px"></div>'
 
     + '<div style="display:flex;gap:8px;margin-bottom:8px">'
-    + '<button class="btn bp" style="flex:1" id="drawer-pay-btn">💰 '+(LANG==='ar'?'تسجيل دفعة':'Pay')+(unit.monthly_rent?' — '+unit.monthly_rent.toLocaleString()+' AED':'')+'</button>'
+    + '<button class="btn bp" style="flex:1" id="drawer-pay-btn">💰 '+(LANG==='ar'?'تسجيل دفعة':'Pay')+(effectiveRent?' — '+effectiveRent.toLocaleString()+' AED':'')+'</button>'
     + '<button class="btn bg" style="flex:1" id="drawer-edit-btn">✏️ '+(LANG==='ar'?'تعديل':'Edit')+'</button>'
     + '</div>'
     + '<div style="display:flex;gap:8px;margin-bottom:8px">'
@@ -898,3 +905,90 @@ function copyPhone(num) {
 window.copyPhone = copyPhone;
 
 window.toggleVacantMode = toggleVacantMode;
+
+// ══ DISCOUNTS ══
+async function getActiveDiscount(unitId) {
+  var today = new Date();
+  var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  try {
+    var { data } = await sb.from('unit_discounts')
+      .select('*').eq('unit_id', unitId)
+      .lte('start_date', todayStr)
+      .gte('end_date', todayStr)
+      .order('created_at', {ascending:false})
+      .limit(1).maybeSingle();
+    return data || null;
+  } catch(e) { return null; }
+}
+
+async function showDiscountModal(unitId, apartment, room, currentRent) {
+  var existing = await getActiveDiscount(unitId);
+  var modal = document.createElement('div');
+  modal.id = 'discount-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:#0009;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  var today = new Date();
+  var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  // default end = آخر الشهر الجاي
+  var nextMonth = new Date(today.getFullYear(), today.getMonth()+2, 0);
+  var endDefault = nextMonth.getFullYear()+'-'+String(nextMonth.getMonth()+1).padStart(2,'0')+'-'+String(nextMonth.getDate()).padStart(2,'0');
+
+  modal.innerHTML = '<div style="background:var(--surf);border-radius:18px;padding:24px;width:100%;max-width:360px;box-shadow:0 8px 32px #0006">'
+    +'<div style="font-weight:900;font-size:1rem;margin-bottom:16px;text-align:center">🏷️ '+(LANG==='ar'?'خصم مؤقت':'Temporary Discount')+'</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">'+(LANG==='ar'?'الإيجار الحالي':'Current Rent')+'</div>'
+    +'<div style="font-weight:700;margin-bottom:14px;color:var(--accent)">'+(currentRent||0)+' AED</div>'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">'+(LANG==='ar'?'مبلغ الخصم':'Discount Amount')+'</div>'
+    +'<input id="disc-amount" type="number" class="inp" placeholder="0" value="'+(existing?existing.discount_amount:'')+'" style="width:100%;margin-bottom:12px">'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">'+(LANG==='ar'?'من تاريخ':'From')+'</div>'
+    +'<input id="disc-start" type="date" class="inp" value="'+(existing?existing.start_date:todayStr)+'" style="width:100%;margin-bottom:12px">'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">'+(LANG==='ar'?'حتى تاريخ':'Until')+'</div>'
+    +'<input id="disc-end" type="date" class="inp" value="'+(existing?existing.end_date:endDefault)+'" style="width:100%;margin-bottom:12px">'
+    +'<div style="font-size:.78rem;color:var(--muted);margin-bottom:4px">'+(LANG==='ar'?'السبب (اختياري)':'Reason (optional)')+'</div>'
+    +'<input id="disc-reason" type="text" class="inp" placeholder="'+(LANG==='ar'?'مثال: إصلاحات':'e.g. repairs')+'" value="'+(existing?existing.reason||'':'')+'" style="width:100%;margin-bottom:20px">'
+    +'<div style="display:flex;gap:10px">'
+    +(existing?'<button id="disc-delete" class="btn" style="flex:1;background:var(--red)22;border:1px solid var(--red);color:var(--red)">🗑️ '+(LANG==='ar'?'حذف':'Delete')+'</button>':'')
+    +'<button id="disc-cancel" class="btn" style="flex:1;background:var(--surf2)">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
+    +'<button id="disc-save" class="btn bp" style="flex:2">💾 '+(LANG==='ar'?'حفظ':'Save')+'</button>'
+    +'</div>'
+    +'</div>';
+  document.body.appendChild(modal);
+
+  modal.addEventListener('click', function(e){ if(e.target===modal) modal.remove(); });
+  document.getElementById('disc-cancel').onclick = function(){ modal.remove(); };
+
+  if(existing) {
+    document.getElementById('disc-delete').onclick = async function(){
+      if(!confirm(LANG==='ar'?'حذف الخصم؟':'Delete discount?')) return;
+      await sb.from('unit_discounts').delete().eq('id', existing.id);
+      toast(LANG==='ar'?'تم حذف الخصم':'Discount deleted','ok');
+      modal.remove();
+      openDrawer(unitId);
+    };
+  }
+
+  document.getElementById('disc-save').onclick = async function(){
+    var amt = parseFloat(document.getElementById('disc-amount').value||0);
+    var start = document.getElementById('disc-start').value;
+    var end = document.getElementById('disc-end').value;
+    var reason = document.getElementById('disc-reason').value.trim();
+    if(!amt || amt <= 0){ toast(LANG==='ar'?'أدخل مبلغ الخصم':'Enter discount amount','err'); return; }
+    if(!start || !end){ toast(LANG==='ar'?'أدخل التواريخ':'Enter dates','err'); return; }
+    if(end < start){ toast(LANG==='ar'?'تاريخ النهاية قبل البداية':'End before start','err'); return; }
+    if(amt >= currentRent){ toast(LANG==='ar'?'الخصم أكبر من الإيجار':'Discount exceeds rent','err'); return; }
+    var btn = this; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+    try {
+      if(existing) {
+        await sb.from('unit_discounts').update({discount_amount:amt,start_date:start,end_date:end,reason:reason||null}).eq('id',existing.id);
+      } else {
+        await sb.from('unit_discounts').insert({unit_id:unitId,apartment:String(apartment),room:String(room),discount_amount:amt,start_date:start,end_date:end,reason:reason||null,created_by:(ME||{}).id||null});
+      }
+      toast(LANG==='ar'?'✅ تم حفظ الخصم':'✅ Discount saved','ok');
+      modal.remove();
+      openDrawer(unitId);
+    } catch(e) {
+      toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message,'err');
+      btn.disabled=false; btn.innerHTML='💾 '+(LANG==='ar'?'حفظ':'Save');
+    }
+  };
+}
+window.getActiveDiscount = getActiveDiscount;
+window.showDiscountModal = showDiscountModal;
