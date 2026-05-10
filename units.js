@@ -779,6 +779,30 @@ async function saveUnit(btn) {
       var prev = document.getElementById('unit-imgs-preview');
       if(prev) prev.innerHTML = '';
     }
+    // سجّل التأمين في deposits table لو وحدة جديدة (مش تعديل) وفيها مستأجر وتأمين
+    var depAmt = isVacant ? 0 : Number(document.getElementById('u-dep').value||0);
+    var depStart = isVacant ? null : (document.getElementById('u-start').value||null);
+    var tenantName = isVacant ? null : (document.getElementById('u-name').value.trim()||null);
+    var isNewUnit = !existing; // existing من الكود اللي فوق
+    if(!isVacant && depAmt > 0 && tenantName && depStart && savedUnit2) {
+      // تأكد مش موجود قبل كده
+      var { data: existDep } = await sb.from('deposits')
+        .select('id').eq('unit_id', savedUnit2.id)
+        .eq('tenant_name', tenantName).eq('status','held').maybeSingle();
+      if(!existDep) {
+        await sb.from('deposits').insert({
+          unit_id: savedUnit2.id,
+          apartment: String(apt),
+          room: String(room),
+          tenant_name: tenantName,
+          amount: depAmt,
+          status: 'held',
+          deposit_received_date: depStart,
+          notes: isNewUnit ? 'مسجّل عند إضافة الوحدة' : 'مسجّل عند تعديل الوحدة'
+        });
+      }
+    }
+
     toast(isVacant ? (LANG==='ar'?'تم حفظ الوحدة كشاغرة ✓':'Vacant unit saved ✓') : (LANG==='ar'?'تم حفظ الوحدة ✓':'Unit saved ✓'),'ok');
     clearUnit();
     await loadHome(null,true);
