@@ -111,11 +111,12 @@ async function loadMonthly(btn) {
       };
 
       // هل السجل ده كان نشط في الشهر المختار؟
-      // نشط = دخل قبل أو في الشهر، وخرج في الشهر أو بعده بشهر واحد
       var endDateYM = (h.end_date||'').slice(0,7);
       var startDateYM = (h.start_date||'').slice(0,7);
       // لو خرج قبل الشهر — تجاهله
       if(h.end_date && endDateYM < monYMcheck) return;
+      // لو خرج في أول يوم من الشهر (مثلاً 2026-05-01) = غادر آخر الشهر السابق — تجاهله
+      if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
 
       if(!existingIds.has(h.unit_id)) {
         // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق
