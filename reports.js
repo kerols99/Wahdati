@@ -115,8 +115,10 @@ async function loadMonthly(btn) {
       var startDateYM = (h.start_date||'').slice(0,7);
       // لو خرج قبل الشهر — تجاهله
       if(h.end_date && endDateYM < monYMcheck) return;
-      // لو خرج في أول يوم من الشهر (مثلاً 2026-05-01) = غادر آخر الشهر السابق — تجاهله
+      // لو خرج في أول يوم من الشهر = غادر آخر الشهر السابق — تجاهله
       if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
+      // لو نقل داخلي — المستأجر لسه في المبنى، ما يظهرش كمغادر في التقرير
+      if(h.snapshot_type === 'internal_transfer_out' || h.snapshot_type === 'internal_transfer_in') return;
 
       if(!existingIds.has(h.unit_id)) {
         // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق
