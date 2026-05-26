@@ -53,7 +53,8 @@ async function loadSmartDash(ym) {
     // Parallel fetch
     // cash: uses payment_date (actual receipt)
     // accrual: uses payment_month (who paid this month's rent)
-    var [cashPaysRes, accrualPaysRes, depsRes, unitsRes, prevCashRes, prevAccrualRes, departRes, expRes, ownerRes, refDepsSmartRes] = await Promise.all([
+    var _todaySmartDisc = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    var [cashPaysRes, accrualPaysRes, depsRes, unitsRes, prevCashRes, prevAccrualRes, departRes, expRes, ownerRes, refDepsSmartRes, smartDiscRes] = await Promise.all([
       // CASH — for dashboard "collected" KPI
       sb.from('rent_payments').select('amount,unit_id').gte('payment_date',ym+'-01').lte('payment_date',monthEnd(ym)),
       // ACCRUAL — for "remaining" / unit status badges
@@ -69,12 +70,17 @@ async function loadSmartDash(ym) {
       sb.from('owner_payments').select('amount').eq('period_month', (ym||'').slice(0,7)+'-01'),
       // Refunded deposits this month by refund_date
       sb.from('deposits').select('amount,refund_amount,refund_date,apartment,room,tenant_name,deposit_received_date,status')
-        .gt('refund_amount', 0)
+        .gt('refund_amount', 0),
+      // Active discounts
+      sb.from('unit_discounts').select('unit_id,discount_amount')
+        .lte('start_date', _todaySmartDisc).gte('end_date', _todaySmartDisc)
     ]);
 
     var cashPays     = cashPaysRes.data||[];
     var accrualPays  = accrualPaysRes.data||[];
     var deps         = depsRes.data||[];
+    var smartDiscMap = {};
+    (smartDiscRes.data||[]).forEach(function(d){ smartDiscMap[d.unit_id]=(d.discount_amount||0); });
     var allRefSmartData = refDepsSmartRes.data||[];
     function refEffMonth(d) {
       var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
@@ -116,10 +122,14 @@ async function loadSmartDash(ym) {
     var accrualPaid  = accrualPays.reduce(function(s,p){return s+(p.amount||0);},0);
     var prevAccrualTotal = prevAccrual.reduce(function(s,p){return s+(p.amount||0);},0);
 
-    // Expected = sum of occupied units monthly_rent
-    var expected  = occupied.reduce(function(s,u){return s+(u.monthly_rent||0);},0);
+    // Expected = sum of occupied units monthly_rent (after discounts)
+    // استثناء المستأجرين الجدد اللي دخلوا في نفس الشهر — مش مطلوب منهم إيجار
+    var expected  = occupied.reduce(function(s,u){
+      if(u.start_date && u.start_date.slice(0,7) === ym) return s; // جديد هذا الشهر
+      return s+Math.max(0,(u.monthly_rent||0)-(smartDiscMap[u.id]||0));
+    },0);
     // Remaining = accrual based (who OWES this month's rent)
-    var remaining = expected - accrualPaid;
+    var remaining = Math.max(0, expected - accrualPaid);
 
     // Dashboard comparison:
     // pct = accrual paid / expected (same basis — who paid THIS month's rent)
@@ -680,7 +690,8 @@ async function exportCollPDF(monYM) {
   try {
     toast(LANG==='ar'?'جاري التحضير...':'Preparing...','');
 
-    var [paysRes, unitsRes, depsRes] = await Promise.all([
+    var _todayForDisc = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    var [paysRes, unitsRes, depsRes, discRes] = await Promise.all([
       sb.from('rent_payments')
         .select('unit_id,apartment,room,amount,payment_date,payment_method,payment_month')
         .gte('payment_date',monYM+'-01').lte('payment_date',monthEnd(monYM))
@@ -688,12 +699,16 @@ async function exportCollPDF(monYM) {
       sb.from('units')
         .select('id,apartment,room,tenant_name,tenant_name2,monthly_rent,unit_code,building_name')
         .eq('is_vacant',false).order('apartment').order('room'),
-      sb.from('deposits').select('unit_id,amount,status')
+      sb.from('deposits').select('unit_id,amount,status'),
+      sb.from('unit_discounts').select('unit_id,discount_amount')
+        .lte('start_date', _todayForDisc).gte('end_date', _todayForDisc)
     ]);
 
     var pays  = paysRes.data||[];
     var units = unitsRes.data||[];
     var deps  = depsRes.data||[];
+    var discMap = {};
+    (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(d.discount_amount||0); });
 
     // Maps
     var paidMap = {};
@@ -719,7 +734,7 @@ async function exportCollPDF(monYM) {
     });
 
     var totalCollected = pays.reduce(function(s,p){return s+(p.amount||0);},0);
-    var totalTarget    = units.reduce(function(s,u){return s+(u.monthly_rent||0);},0);
+    var totalTarget    = units.reduce(function(s,u){return s+Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));},0);
     var pct = totalTarget>0?Math.round(totalCollected/totalTarget*100):0;
     var date = new Date().toLocaleDateString('ar-AE');
 
