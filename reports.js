@@ -1545,3 +1545,100 @@ async function searchReceipts(q) {
   }, 400);
 }
 window.searchReceipts = searchReceipts;
+
+// ══ DISCOUNT REPORT ══
+async function loadDiscReport(btn) {
+  var orig = btn ? btn.innerHTML : '';
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+  try {
+    var today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+
+    var { data: discounts, error } = await sb.from('unit_discounts')
+      .select('id,unit_id,apartment,room,discount_amount,start_date,end_date,reason')
+      .order('apartment').order('room').order('start_date');
+    if(error) throw error;
+
+    var discounts = discounts || [];
+    var out = document.getElementById('rDiscOut');
+    if(!discounts.length) {
+      out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px">'+
+        (LANG==='ar'?'لا توجد خصومات مسجّلة':'No discounts found')+'</div>';
+      return;
+    }
+
+    // تقسيم لنشط وسابق
+    var active = discounts.filter(function(d){ return d.end_date >= today; });
+    var expired = discounts.filter(function(d){ return d.end_date < today; });
+
+    var totalActive = active.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+    var totalExpired = expired.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+
+    // تجميع بالشقة
+    var aptMap = {};
+    discounts.forEach(function(d) {
+      var apt = String(d.apartment||'');
+      if(!aptMap[apt]) aptMap[apt] = [];
+      aptMap[apt].push(d);
+    });
+
+    function discRow(d) {
+      var isActive = d.end_date >= today;
+      var badge = isActive
+        ? '<span style="background:var(--green)22;color:var(--green);border-radius:6px;padding:2px 7px;font-size:.65rem;font-weight:700">✅ نشط</span>'
+        : '<span style="background:var(--muted)22;color:var(--muted);border-radius:6px;padding:2px 7px;font-size:.65rem;font-weight:700">⏱️ منتهي</span>';
+      return '<tr style="border-bottom:1px solid var(--border)">'
+        +'<td style="padding:7px 6px;font-size:.8rem">'+d.room+'</td>'
+        +'<td style="padding:7px 6px;font-size:.8rem;font-weight:700;color:var(--amber)">'+d.discount_amount+' AED</td>'
+        +'<td style="padding:7px 6px;font-size:.75rem;color:var(--muted)">'+d.start_date+'</td>'
+        +'<td style="padding:7px 6px;font-size:.75rem;color:var(--muted)">'+d.end_date+'</td>'
+        +'<td style="padding:7px 6px;font-size:.75rem">'+badge+'</td>'
+        +'<td style="padding:7px 6px;font-size:.75rem;color:var(--muted)">'+(d.reason||'—')+'</td>'
+        +'</tr>';
+    }
+
+    var html = '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">'
+      +'<div style="background:var(--green)15;border:1px solid var(--green)33;border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'خصومات نشطة':'Active Discounts')+'</div>'
+      +'<div style="font-weight:900;color:var(--green);font-size:1.1rem">'+active.length+' <span style="font-size:.75rem">خصم</span></div>'
+      +'<div style="font-size:.8rem;color:var(--green)">'+totalActive.toLocaleString()+' AED</div>'
+      +'</div>'
+      +'<div style="background:var(--muted)15;border:1px solid var(--border);border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'خصومات منتهية':'Expired Discounts')+'</div>'
+      +'<div style="font-weight:900;color:var(--muted);font-size:1.1rem">'+expired.length+' <span style="font-size:.75rem">خصم</span></div>'
+      +'<div style="font-size:.8rem;color:var(--muted)">'+totalExpired.toLocaleString()+' AED</div>'
+      +'</div>'
+      +'</div>';
+
+    Object.keys(aptMap).sort().forEach(function(apt) {
+      var rows = aptMap[apt];
+      var aptTotal = rows.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+      var aptActive = rows.filter(function(d){ return d.end_date >= today; });
+      html += '<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:12px;overflow:hidden">'
+        +'<div style="background:var(--surf2);padding:9px 12px;display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-weight:700;font-size:.85rem">🏢 شقة '+apt+'</span>'
+        +'<span style="font-size:.75rem;color:var(--amber)">إجمالي: '+aptTotal.toLocaleString()+' AED'
+        +(aptActive.length?' | <span style="color:var(--green)">'+aptActive.length+' نشط</span>':'')
+        +'</span>'
+        +'</div>'
+        +'<table style="width:100%;border-collapse:collapse">'
+        +'<thead><tr style="background:var(--surf3,var(--surf2))">'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">غرفة</th>'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">الخصم</th>'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">من</th>'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">حتى</th>'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">الحالة</th>'
+        +'<th style="padding:5px 6px;font-size:.7rem;text-align:right;color:var(--muted)">السبب</th>'
+        +'</tr></thead><tbody>'
+        + rows.map(discRow).join('')
+        +'</tbody></table></div>';
+    });
+
+    out.innerHTML = html;
+  } catch(e) {
+    toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message,'err');
+    console.error('loadDiscReport:', e);
+  } finally {
+    if(btn) { btn.disabled=false; btn.innerHTML=orig||'🏷️ عرض تقرير الخصومات'; }
+  }
+}
+window.loadDiscReport = loadDiscReport;
