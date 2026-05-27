@@ -63,12 +63,15 @@ async function openTenantProfile(unitId) {
     modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
     document.body.appendChild(modal);
 
-    var [pR,dR,hR] = await Promise.all([
+    var [pR,dR,hR,trR] = await Promise.all([
       sb.from('rent_payments').select('*').eq('unit_id',unitId).order('payment_date',{ascending:false}).limit(36),
       sb.from('deposits').select('*').eq('unit_id',unitId).order('deposit_received_date',{ascending:false}),
-      sb.from('unit_history').select('*').eq('unit_id',unitId).order('end_date',{ascending:false})
+      sb.from('unit_history').select('*').eq('unit_id',unitId).order('end_date',{ascending:false}),
+      sb.from('internal_transfers').select('*')
+        .or('from_unit_id.eq.'+unitId+',to_unit_id.eq.'+unitId)
+        .order('transfer_date',{ascending:false})
     ]);
-    var pays=pR.data||[], deps=dR.data||[], hist=hR.data||[];
+    var pays=pR.data||[], deps=dR.data||[], hist=hR.data||[], transfers=trR.data||[];
     var totalPaid=pays.reduce(function(s,p){return s+(p.amount||0);},0);
     var totalDep=deps.filter(function(d){return d.status!=='refunded';}).reduce(function(s,d){return s+(d.amount||0);},0);
     var html='';
@@ -116,6 +119,27 @@ async function openTenantProfile(unitId) {
           +'<div style="display:flex;justify-content:space-between"><b style="font-size:.82rem">'+escapeHtml(h.tenant_name||'—')+(h.tenant_name2?' &amp; '+escapeHtml(h.tenant_name2):'')+'</b>'
           +'<div style="font-size:.68rem;color:var(--muted);text-align:end"><div>'+(h.start_date?h.start_date.slice(0,10):'')+'</div><div>'+(h.end_date?h.end_date.slice(0,10):'')+'</div></div></div>'
           +(h.monthly_rent?'<div style="font-size:.7rem;color:var(--muted);margin-top:4px">💰 '+h.monthly_rent+' AED'+(h.deposit?' · 🔒 '+h.deposit+' AED':'')+'</div>':'')
+          +'</div>';
+      });
+      html+='<div style="height:1px;background:var(--border);margin:12px 0"></div>';
+    }
+
+    // Internal transfers history
+    if(transfers.length>0){
+      html+='<div style="font-weight:700;font-size:.75rem;color:var(--accent);margin-bottom:7px;text-transform:uppercase">🔄 سجل التنقلات الداخلية</div>';
+      transfers.forEach(function(tr){
+        var isFrom = tr.from_unit_id === unitId;
+        var snap = isFrom ? (tr.to_snapshot||{}) : (tr.from_snapshot||{});
+        var otherApt = snap.apartment || '—';
+        var otherRoom = snap.room || '—';
+        var arrow = isFrom ? '← نُقل إلى' : '← نُقل من';
+        var color = isFrom ? 'var(--amber)' : 'var(--green)';
+        html+='<div style="background:var(--surf2);border-radius:10px;padding:10px;margin-bottom:6px;border-right:3px solid '+color+'">'
+          +'<div style="display:flex;justify-content:space-between;align-items:center">'
+          +'<div style="font-size:.8rem;font-weight:700;color:'+color+'">🔄 '+arrow+' شقة '+otherApt+' غرفة '+otherRoom+'</div>'
+          +'<div style="font-size:.68rem;color:var(--muted)">'+(tr.transfer_date||'').slice(0,10)+'</div>'
+          +'</div>'
+          +(tr.notes?'<div style="font-size:.68rem;color:var(--muted);margin-top:3px">'+escapeHtml(tr.notes)+'</div>':'')
           +'</div>';
       });
       html+='<div style="height:1px;background:var(--border);margin:12px 0"></div>';
