@@ -227,12 +227,20 @@ async function loadMonthly(btn) {
       });
     });
 
-    // depRawMap: all deposit rows per unit
+    // depRawMap: all deposit rows per unit_id AND per apartment-room
     var depRawMap = {};
+    var depRawMapByRoom = {};
     deps.forEach(function(d){
-      if(!d.unit_id) return;
-      if(!depRawMap[d.unit_id]) depRawMap[d.unit_id]=[];
-      depRawMap[d.unit_id].push(d);
+      if(d.unit_id) {
+        if(!depRawMap[d.unit_id]) depRawMap[d.unit_id]=[];
+        depRawMap[d.unit_id].push(d);
+      }
+      // fallback by apartment-room (for former tenants whose unit_id changed)
+      var roomKey = String(d.apartment||'')+'-'+String(d.room||'');
+      if(roomKey !== '-') {
+        if(!depRawMapByRoom[roomKey]) depRawMapByRoom[roomKey]=[];
+        depRawMapByRoom[roomKey].push(d);
+      }
     });
 
     // depMap: deposit counts in the month of unit.start_date
@@ -260,8 +268,12 @@ async function loadMonthly(btn) {
     units.forEach(function(u){
       totalRent     += u.monthly_rent||0;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
-      var _depLookupId2 = u._isFormerTenant ? (String(u.id).split('_f')[0]) : u.id;
-      totalDeps += _pickDepositForReport(depRawMap[_depLookupId2]||[], monYM);
+      var _depRows2;
+      if(u._isFormerTenant) {
+        var _rk2 = String(u.apartment)+'-'+String(u.room);
+        _depRows2 = (depRawMapByRoom[_rk2]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===u.tenant_name; });
+      } else { _depRows2 = depRawMap[u.id]||[]; }
+      totalDeps += _pickDepositForReport(_depRows2, monYM);
     });
     // المُرتجعات في هذا الشهر — query منفصلة بـ refund_date
     var totalRefunds = refundedDeps.reduce(function(s,d){ return s+(Number(d.refund_amount)||0); }, 0);
@@ -281,8 +293,12 @@ async function loadMonthly(btn) {
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
       apts[apt].rent     += u.monthly_rent||0;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
-      var _depLookupId3 = u._isFormerTenant ? (String(u.id).split('_f')[0]) : u.id;
-      var _dep3 = _pickDepositForReport(depRawMap[_depLookupId3]||[], monYM);
+      var _depRows3;
+      if(u._isFormerTenant) {
+        var _rk3 = String(u.apartment)+'-'+String(u.room);
+        _depRows3 = (depRawMapByRoom[_rk3]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===u.tenant_name; });
+      } else { _depRows3 = depRawMap[u.id]||[]; }
+      var _dep3 = _pickDepositForReport(_depRows3, monYM);
       apts[apt].coll += _pk3 + _dep3;
       apts[apt].deps += _dep3;
     });
@@ -343,9 +359,17 @@ async function loadMonthly(btn) {
         var aptLabel    = (LANG==='ar'?'شقة ':'Apt ')+apt;
 
         var rows = g.units.slice().sort(function(a,b){return Number(a.room)-Number(b.room);}).map(function(u){
-          // Former tenants: look up deposit by original unit_id (their id is modified with _f_ suffix)
-          var _depLookupId = u._isFormerTenant ? (String(u.id).split('_f')[0]) : u.id;
-          var dep      = _pickDepositForReport(depRawMap[_depLookupId]||[], monYM);
+          // Former tenants: look up deposit by apartment-room (more reliable than unit_id)
+          var _depRows;
+          if(u._isFormerTenant) {
+            var _roomKey = String(u.apartment)+'-'+String(u.room);
+            _depRows = depRawMapByRoom[_roomKey] || [];
+            // filter to only this tenant's deposits
+            _depRows = _depRows.filter(function(d){ return !d.tenant_name || d.tenant_name === u.tenant_name; });
+          } else {
+            _depRows = depRawMap[u.id] || [];
+          }
+          var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
           var showDep  = dep > 0; // show if deposit was received this month (regardless of isNew)
