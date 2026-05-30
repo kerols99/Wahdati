@@ -271,8 +271,15 @@ async function loadMonthly(btn) {
     units.forEach(function(u){
       totalRent     += u.monthly_rent||0;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
-      var _rk2 = String(u.apartment)+'-'+String(u.room);
-      var _depRows2 = (depRawMapByRoom[_rk2]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===(u.tenant_name||''); });
+      var _startYM2 = (u.start_date||'').slice(0,7);
+      var _depRows2;
+      if(u._isFormerTenant) {
+        var _uid2 = String(u.id).split('_f')[0];
+        _depRows2 = (depRawMap[_uid2]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM2||!_startYM2; });
+        if(!_depRows2.length) { var _rk2b=String(u.apartment)+'-'+String(u.room); _depRows2=(depRawMapByRoom[_rk2b]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM2||!_startYM2; }); }
+      } else {
+        _depRows2 = (depRawMap[u.id]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM2||!_startYM2; });
+      }
       totalDeps += _pickDepositForReport(_depRows2, monYM);
     });
     // المُرتجعات في هذا الشهر — query منفصلة بـ refund_date
@@ -293,8 +300,15 @@ async function loadMonthly(btn) {
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
       apts[apt].rent     += u.monthly_rent||0;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
-      var _rk3 = String(u.apartment)+'-'+String(u.room);
-      var _depRows3 = (depRawMapByRoom[_rk3]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===(u.tenant_name||''); });
+      var _startYM3 = (u.start_date||'').slice(0,7);
+      var _depRows3;
+      if(u._isFormerTenant) {
+        var _uid3 = String(u.id).split('_f')[0];
+        _depRows3 = (depRawMap[_uid3]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM3||!_startYM3; });
+        if(!_depRows3.length) { var _rk3b=String(u.apartment)+'-'+String(u.room); _depRows3=(depRawMapByRoom[_rk3b]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM3||!_startYM3; }); }
+      } else {
+        _depRows3 = (depRawMap[u.id]||[]).filter(function(d){ var dy=(d.deposit_received_date||'').slice(0,7); return dy>=_startYM3||!_startYM3; });
+      }
       var _dep3 = _pickDepositForReport(_depRows3, monYM);
       apts[apt].coll += _pk3 + _dep3;
       apts[apt].deps += _dep3;
@@ -359,11 +373,29 @@ async function loadMonthly(btn) {
         var rows = g.units.slice().sort(function(a,b){return Number(a.room)-Number(b.room);}).map(function(u){
           // Former tenants: look up deposit by apartment-room (more reliable than unit_id)
           var _depRows;
-          // دايماً استخدم apartment-room مع فلتر tenant_name عشان نتجنب خلط تأمينات مستأجرين مختلفين في نفس الوحدة
-          var _roomKey = String(u.apartment)+'-'+String(u.room);
-          _depRows = (depRawMapByRoom[_roomKey] || []).filter(function(d){
-            return !d.tenant_name || d.tenant_name === (u.tenant_name||'');
-          });
+          // استخدم unit_id أولاً، لو مفيش استخدم apartment-room
+          // فلتر بـ start_date: التأمين المفروض يكون في نفس الشهر أو بعد start_date المستأجر
+          var _unitStartYM = (u.start_date||'').slice(0,7);
+          if(u._isFormerTenant) {
+            // للسابقين — استخدم unit_id مع فلتر تاريخ قريب من فترة إقامته
+            _depRows = (depRawMap[String(u.id).split('_f')[0]]||[]).filter(function(d){
+              var dYM = (d.deposit_received_date||'').slice(0,7);
+              return dYM >= _unitStartYM || !_unitStartYM;
+            });
+            if(!_depRows.length) {
+              var _roomKey = String(u.apartment)+'-'+String(u.room);
+              _depRows = (depRawMapByRoom[_roomKey]||[]).filter(function(d){
+                var dYM = (d.deposit_received_date||'').slice(0,7);
+                return dYM >= _unitStartYM || !_unitStartYM;
+              });
+            }
+          } else {
+            // للحاليين — استخدم unit_id مع فلتر إن التأمين بعد أو في نفس شهر الدخول
+            _depRows = (depRawMap[u.id]||[]).filter(function(d){
+              var dYM = (d.deposit_received_date||'').slice(0,7);
+              return dYM >= _unitStartYM || !_unitStartYM;
+            });
+          }
           var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
