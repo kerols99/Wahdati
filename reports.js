@@ -296,6 +296,16 @@ async function loadMonthly(btn) {
       apts[apt].coll += _pk3 + _dep3;
       apts[apt].deps += _dep3;
     });
+    // أضف تأمينات الـ former tenants لإجمالي الشقة (لأنهم مش في units الأصلية)
+    units.filter(function(u){ return u._isFormerTenant; }).forEach(function(u){
+      var apt = String(u.apartment);
+      if(!apts[apt]) return;
+      var _rk = String(u.apartment)+'-'+String(u.room);
+      var _dr = (depRawMapByRoom[_rk]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===(u.tenant_name||''); });
+      var _d = _pickDepositForReport(_dr, monYM);
+      apts[apt].coll += _d;
+      apts[apt].deps += _d;
+    });
 
     // ── Group by floor ──
     var floors = {};
@@ -397,7 +407,7 @@ async function loadMonthly(btn) {
             +'</tr>';
         }).join('');
 
-        var aptDeps = g.units.reduce(function(s,u){return s+(u._isFormerTenant?0:(depMap[u.id]||0));},0);
+        var aptDeps = g.deps; // بيشمل تأمينات المستأجرين الحاليين والسابقين
 
         html += '<div style="margin-bottom:12px;margin-right:8px" data-apt-block>'
           // Apt header
