@@ -148,10 +148,14 @@ async function loadSmartDash(ym) {
         if(h.start_date && h.start_date.slice(0,7) === ym) return;
         expected += (h.monthly_rent||0);
       } else {
-        // الوحدة فيها مستأجر جديد — لو السابق مش نفس الشهر يضيف إيجاره
+        // الوحدة فيها مستأجر حالي — لو المستأجر السابق كان في الشهر يضيف إيجاره
         var currentUnit = occupied.find(function(u){ return u.id === h.unit_id; });
-        if(currentUnit && currentUnit.start_date && currentUnit.start_date.slice(0,7) > ym) {
-          expected += (h.monthly_rent||0);
+        if(currentUnit && currentUnit.start_date) {
+          var curStartYM = currentUnit.start_date.slice(0,7);
+          // لو المستأجر الجديد دخل بعد الشهر أو في نفس الشهر — السابق كان موجود
+          if(curStartYM >= ym) {
+            expected += (h.monthly_rent||0);
+          }
         }
       }
     });
@@ -781,7 +785,7 @@ async function exportCollPDF(monYM) {
         totalTarget += (h.monthly_rent||0);
       } else {
         var cu = units.find(function(u){ return u.id === h.unit_id; });
-        if(cu && cu.start_date && cu.start_date.slice(0,7) > monYM) {
+        if(cu && cu.start_date && cu.start_date.slice(0,7) >= monYM) {
           totalTarget += (h.monthly_rent||0);
         }
       }
