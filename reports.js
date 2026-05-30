@@ -268,11 +268,8 @@ async function loadMonthly(btn) {
     units.forEach(function(u){
       totalRent     += u.monthly_rent||0;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
-      var _depRows2;
-      if(u._isFormerTenant) {
-        var _rk2 = String(u.apartment)+'-'+String(u.room);
-        _depRows2 = (depRawMapByRoom[_rk2]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===u.tenant_name; });
-      } else { _depRows2 = depRawMap[u.id]||[]; }
+      var _rk2 = String(u.apartment)+'-'+String(u.room);
+      var _depRows2 = (depRawMapByRoom[_rk2]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===(u.tenant_name||''); });
       totalDeps += _pickDepositForReport(_depRows2, monYM);
     });
     // المُرتجعات في هذا الشهر — query منفصلة بـ refund_date
@@ -293,11 +290,8 @@ async function loadMonthly(btn) {
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
       apts[apt].rent     += u.monthly_rent||0;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
-      var _depRows3;
-      if(u._isFormerTenant) {
-        var _rk3 = String(u.apartment)+'-'+String(u.room);
-        _depRows3 = (depRawMapByRoom[_rk3]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===u.tenant_name; });
-      } else { _depRows3 = depRawMap[u.id]||[]; }
+      var _rk3 = String(u.apartment)+'-'+String(u.room);
+      var _depRows3 = (depRawMapByRoom[_rk3]||[]).filter(function(d){ return !d.tenant_name||d.tenant_name===(u.tenant_name||''); });
       var _dep3 = _pickDepositForReport(_depRows3, monYM);
       apts[apt].coll += _pk3 + _dep3;
       apts[apt].deps += _dep3;
@@ -361,14 +355,11 @@ async function loadMonthly(btn) {
         var rows = g.units.slice().sort(function(a,b){return Number(a.room)-Number(b.room);}).map(function(u){
           // Former tenants: look up deposit by apartment-room (more reliable than unit_id)
           var _depRows;
-          if(u._isFormerTenant) {
-            var _roomKey = String(u.apartment)+'-'+String(u.room);
-            _depRows = depRawMapByRoom[_roomKey] || [];
-            // filter to only this tenant's deposits
-            _depRows = _depRows.filter(function(d){ return !d.tenant_name || d.tenant_name === u.tenant_name; });
-          } else {
-            _depRows = depRawMap[u.id] || [];
-          }
+          // دايماً استخدم apartment-room مع فلتر tenant_name عشان نتجنب خلط تأمينات مستأجرين مختلفين في نفس الوحدة
+          var _roomKey = String(u.apartment)+'-'+String(u.room);
+          _depRows = (depRawMapByRoom[_roomKey] || []).filter(function(d){
+            return !d.tenant_name || d.tenant_name === (u.tenant_name||'');
+          });
           var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
