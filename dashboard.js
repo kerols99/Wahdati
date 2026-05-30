@@ -54,7 +54,7 @@ async function loadSmartDash(ym) {
     // cash: uses payment_date (actual receipt)
     // accrual: uses payment_month (who paid this month's rent)
     var _todaySmartDisc = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-    var [cashPaysRes, accrualPaysRes, depsRes, unitsRes, prevCashRes, prevAccrualRes, departRes, expRes, ownerRes, refDepsSmartRes, smartDiscRes] = await Promise.all([
+    var [cashPaysRes, accrualPaysRes, depsRes, unitsRes, prevCashRes, prevAccrualRes, departRes, expRes, ownerRes, refDepsSmartRes, smartDiscRes, histSmartRes] = await Promise.all([
       // CASH — for dashboard "collected" KPI
       sb.from('rent_payments').select('amount,unit_id').gte('payment_date',ym+'-01').lte('payment_date',monthEnd(ym)),
       // ACCRUAL — for "remaining" / unit status badges
@@ -73,7 +73,11 @@ async function loadSmartDash(ym) {
         .gt('refund_amount', 0),
       // Active discounts
       sb.from('unit_discounts').select('unit_id,discount_amount')
-        .lte('start_date', _todaySmartDisc).gte('end_date', _todaySmartDisc)
+        .lte('start_date', _todaySmartDisc).gte('end_date', _todaySmartDisc),
+      // unit_history للشهر — للمستأجرين السابقين
+      sb.from('unit_history').select('unit_id,monthly_rent,start_date,end_date,snapshot_type')
+        .gte('end_date', ym+'-01')
+        .lte('end_date', (function(){ var d=new Date(ym+'-01'); d.setMonth(d.getMonth()+2); d.setDate(0); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })())
     ]);
 
     var cashPays     = cashPaysRes.data||[];
@@ -128,6 +132,30 @@ async function loadSmartDash(ym) {
       if(u.start_date && u.start_date.slice(0,7) === ym) return s; // جديد هذا الشهر
       return s+Math.max(0,(u.monthly_rent||0)-(smartDiscMap[u.id]||0));
     },0);
+
+    // أضف إيجارات المستأجرين السابقين من unit_history
+    var histSmart = histSmartRes.data||[];
+    var occupiedIds = new Set(occupied.map(function(u){ return u.id; }));
+    histSmart.forEach(function(h){
+      // تجاهل internal_transfer في نفس الشهر
+      if(h.snapshot_type === 'internal_transfer_out' && (h.end_date||'').slice(0,7) === ym) return;
+      if(h.snapshot_type === 'internal_transfer_in') return;
+      // تجاهل لو خرج في أول يوم الشهر
+      if((h.end_date||'').slice(0,7) === ym && (h.end_date||'').slice(8,10) === '01') return;
+      // لو الوحدة مش في occupied حاليًا — يعني مستأجر سابق
+      if(!occupiedIds.has(h.unit_id)) {
+        // تجاهل لو دخل في نفس الشهر (جديد)
+        if(h.start_date && h.start_date.slice(0,7) === ym) return;
+        expected += (h.monthly_rent||0);
+      } else {
+        // الوحدة فيها مستأجر جديد — لو السابق مش نفس الشهر يضيف إيجاره
+        var currentUnit = occupied.find(function(u){ return u.id === h.unit_id; });
+        if(currentUnit && currentUnit.start_date && currentUnit.start_date.slice(0,7) > ym) {
+          expected += (h.monthly_rent||0);
+        }
+      }
+    });
+
     // Remaining = accrual based (who OWES this month's rent)
     var remaining = Math.max(0, expected - accrualPaid);
 
@@ -691,7 +719,8 @@ async function exportCollPDF(monYM) {
     toast(LANG==='ar'?'جاري التحضير...':'Preparing...','');
 
     var _todayForDisc = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-    var [paysRes, unitsRes, depsRes, discRes] = await Promise.all([
+    var _pdfNextMonthEnd = (function(){ var d=new Date(monYM+'-01'); d.setMonth(d.getMonth()+2); d.setDate(0); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    var [paysRes, unitsRes, depsRes, discRes, histPdfRes] = await Promise.all([
       sb.from('rent_payments')
         .select('unit_id,apartment,room,amount,payment_date,payment_method,payment_month')
         .gte('payment_date',monYM+'-01').lte('payment_date',monthEnd(monYM))
@@ -701,7 +730,9 @@ async function exportCollPDF(monYM) {
         .eq('is_vacant',false).order('apartment').order('room'),
       sb.from('deposits').select('unit_id,amount,status'),
       sb.from('unit_discounts').select('unit_id,discount_amount')
-        .lte('start_date', _todayForDisc).gte('end_date', _todayForDisc)
+        .lte('start_date', _todayForDisc).gte('end_date', _todayForDisc),
+      sb.from('unit_history').select('unit_id,monthly_rent,start_date,end_date,snapshot_type')
+        .gte('end_date', monYM+'-01').lte('end_date', _pdfNextMonthEnd)
     ]);
 
     var pays  = paysRes.data||[];
@@ -734,7 +765,27 @@ async function exportCollPDF(monYM) {
     });
 
     var totalCollected = pays.reduce(function(s,p){return s+(p.amount||0);},0);
-    var totalTarget    = units.reduce(function(s,u){return s+Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));},0);
+    var totalTarget    = units.reduce(function(s,u){
+      if(u.start_date && u.start_date.slice(0,7) === monYM) return s;
+      return s+Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
+    },0);
+    // أضف إيجارات المستأجرين السابقين
+    var histPdf = histPdfRes.data||[];
+    var pdfOccupiedIds = new Set(units.map(function(u){ return u.id; }));
+    histPdf.forEach(function(h){
+      if(h.snapshot_type === 'internal_transfer_out' && (h.end_date||'').slice(0,7) === monYM) return;
+      if(h.snapshot_type === 'internal_transfer_in') return;
+      if((h.end_date||'').slice(0,7) === monYM && (h.end_date||'').slice(8,10) === '01') return;
+      if(h.start_date && h.start_date.slice(0,7) === monYM) return;
+      if(!pdfOccupiedIds.has(h.unit_id)) {
+        totalTarget += (h.monthly_rent||0);
+      } else {
+        var cu = units.find(function(u){ return u.id === h.unit_id; });
+        if(cu && cu.start_date && cu.start_date.slice(0,7) > monYM) {
+          totalTarget += (h.monthly_rent||0);
+        }
+      }
+    });
     var pct = totalTarget>0?Math.round(totalCollected/totalTarget*100):0;
     var date = new Date().toLocaleDateString('ar-AE');
 
