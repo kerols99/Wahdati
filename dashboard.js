@@ -126,37 +126,41 @@ async function loadSmartDash(ym) {
     var accrualPaid  = accrualPays.reduce(function(s,p){return s+(p.amount||0);},0);
     var prevAccrualTotal = prevAccrual.reduce(function(s,p){return s+(p.amount||0);},0);
 
-    // Expected = sum of occupied units monthly_rent (after discounts)
-    // استثناء المستأجرين الجدد اللي دخلوا في نفس الشهر — مش مطلوب منهم إيجار
-    var expected  = occupied.reduce(function(s,u){
-      if(u.start_date && u.start_date.slice(0,7) === ym) return s; // جديد هذا الشهر
+    // Expected — نفس منطق التقرير الشهري
+    // لو شهر حالي: من units الحالية
+    // لو شهر تاريخي: من units الحالية اللي دخلوا قبل الشهر + unit_history للمستأجرين السابقين
+    var histSmart = histSmartRes.data||[];
+    var isHistoricalYM = ym < (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+    var occupiedIds = new Set(occupied.map(function(u){ return u.id; }));
+
+    // الوحدات الحالية اللي كانت مشغولة في الشهر
+    var expected = occupied.reduce(function(s,u){
+      var startYM = (u.start_date||'').slice(0,7);
+      // لو دخل بعد الشهر — مش مطلوب منه إيجار في هذا الشهر
+      if(startYM > ym) return s;
+      // لو دخل في نفس الشهر — جديد لكن يتحسب في المستهدف
       return s+Math.max(0,(u.monthly_rent||0)-(smartDiscMap[u.id]||0));
     },0);
 
-    // أضف إيجارات المستأجرين السابقين من unit_history
-    var histSmart = histSmartRes.data||[];
-    var occupiedIds = new Set(occupied.map(function(u){ return u.id; }));
+    // أضف من unit_history — المستأجرين اللي كانوا في الشهر وغادروا أو انتقلوا
+    var addedUnitIds = new Set(); // عشان نتجنب إضافة نفس الوحدة مرتين
     histSmart.forEach(function(h){
+      var endYM = (h.end_date||'').slice(0,7);
+      var startYM2 = (h.start_date||'').slice(0,7);
       // تجاهل internal_transfer في نفس الشهر
-      if(h.snapshot_type === 'internal_transfer_out' && (h.end_date||'').slice(0,7) === ym) return;
+      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) return;
       if(h.snapshot_type === 'internal_transfer_in') return;
-      // تجاهل لو خرج في أول يوم الشهر
-      if((h.end_date||'').slice(0,7) === ym && (h.end_date||'').slice(8,10) === '01') return;
-      // لو الوحدة مش في occupied حاليًا — يعني مستأجر سابق
-      if(!occupiedIds.has(h.unit_id)) {
-        // تجاهل لو دخل في نفس الشهر (جديد)
-        if(h.start_date && h.start_date.slice(0,7) === ym) return;
+      // تجاهل لو خرج في أول يوم الشهر = غادر آخر الشهر السابق
+      if(endYM === ym && (h.end_date||'').slice(8,10) === '01') return;
+      // المستأجر كان موجود في الشهر — أضف إيجاره
+      // بس لو الوحدة مش محسوبة من occupied بالفعل
+      var alreadyCounted = occupiedIds.has(h.unit_id) && (function(){
+        var cu = occupied.find(function(u){ return u.id===h.unit_id; });
+        return cu && (cu.start_date||'').slice(0,7) < ym; // المستأجر الحالي دخل قبل الشهر
+      })();
+      if(!alreadyCounted && !addedUnitIds.has(h.unit_id+'_'+String(h.end_date))) {
+        addedUnitIds.add(h.unit_id+'_'+String(h.end_date));
         expected += (h.monthly_rent||0);
-      } else {
-        // الوحدة فيها مستأجر حالي — لو المستأجر السابق كان في الشهر يضيف إيجاره
-        var currentUnit = occupied.find(function(u){ return u.id === h.unit_id; });
-        if(currentUnit && currentUnit.start_date) {
-          var curStartYM = currentUnit.start_date.slice(0,7);
-          // لو المستأجر الجديد دخل بعد الشهر أو في نفس الشهر — السابق كان موجود
-          if(curStartYM >= ym) {
-            expected += (h.monthly_rent||0);
-          }
-        }
       }
     });
 
