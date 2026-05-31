@@ -112,6 +112,13 @@ async function loadSmartDash(ym) {
       // لو الوحدة فيها مستأجر حالي دخل في الشهر أو قبله — محسوب بالفعل
       var cu = currentInMonth.find(function(u){ return u.id===h.unit_id; });
       if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
+      // لو نقل داخلي — تأكد إن المستأجر مش محسوب في وحدته الجديدة
+      if(h.snapshot_type === 'internal_transfer_out' && h.tenant_name) {
+        var inNewUnit = currentInMonth.find(function(u){
+          return u.tenant_name === h.tenant_name && u.id !== h.unit_id;
+        });
+        if(inNewUnit) return;
+      }
       var key = h.unit_id+'_'+(h.end_date||'');
       if(!addedKeys.has(key)){
         addedKeys.add(key);
