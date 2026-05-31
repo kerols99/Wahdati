@@ -49,6 +49,7 @@ async function loadSmartDash(ym) {
     var prevDate = new Date(ym+'-01');
     prevDate.setMonth(prevDate.getMonth()-1);
     var prevYM = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
+    var monStart = ym+'-01';
     var monEnd = monthEnd(ym);
     var nextMonthEnd = (function(){
       var d=new Date(ym+'-01'); d.setMonth(d.getMonth()+2); d.setDate(0);
@@ -56,64 +57,89 @@ async function loadSmartDash(ym) {
     })();
     var _today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
-    // ── Fetch all data in parallel ──
+    // ── Fetch all data ──
     var [
       cashPaysRes, accrualPaysRes, depsRes, refDepsRes,
       unitsRes, prevCashRes, prevAccrualRes,
-      departRes, expRes, ownerRes,
-      discRes, histRes
+      departRes, expRes, ownerRes, discRes, histRes
     ] = await Promise.all([
-      // Cash payments this month
-      sb.from('rent_payments').select('amount,unit_id').gte('payment_date',ym+'-01').lte('payment_date',monEnd),
-      // Accrual payments this month
+      sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
-      // Deposits received this month
-      sb.from('deposits').select('amount').gte('deposit_received_date',ym+'-01').lte('deposit_received_date',monEnd).eq('status','held'),
-      // Refunded deposits this month
-      sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date',ym+'-01').lte('refund_date',monEnd),
-      // All units
-      sb.from('units').select('id,monthly_rent,is_vacant,unit_status,start_date'),
-      // Previous month cash
+      sb.from('deposits').select('amount').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd).eq('status','held'),
+      sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date',monStart).lte('refund_date',monEnd),
+      sb.from('units').select('id,monthly_rent,is_vacant,unit_status,start_date,tenant_name'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
-      // Previous month accrual
       sb.from('rent_payments').select('amount').like('payment_month', prevYM+'%'),
-      // Departures this month
       sb.from('moves').select('unit_id').eq('type','depart').eq('status','pending').lte('move_date',monEnd),
-      // Expenses
       sb.from('expenses').select('amount').eq('period_month', ym+'-01'),
-      // Owner payments
       sb.from('owner_payments').select('amount').eq('period_month', ym+'-01'),
-      // Active discounts
-      sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',_today).gte('end_date',ym+'-01'),
-      // unit_history for this month
-      sb.from('unit_history').select('unit_id,monthly_rent,start_date,end_date,snapshot_type')
-        .gte('end_date', ym+'-01').lte('end_date', nextMonthEnd)
+      sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',_today).gte('end_date',monStart),
+      sb.from('unit_history').select('unit_id,monthly_rent,start_date,end_date,snapshot_type,tenant_name')
+        .gte('end_date', monStart).lte('end_date', nextMonthEnd)
     ]);
 
-    // ── Process data ──
-    var cashPays    = cashPaysRes.data||[];
-    var accrualPays = accrualPaysRes.data||[];
-    var deps        = depsRes.data||[];
-    var refDeps     = refDepsRes.data||[];
-    var units       = unitsRes.data||[];
-    var prevCash    = prevCashRes.data||[];
-    var prevAccrual = prevAccrualRes.data||[];
-    var departs     = departRes.data||[];
-    var exps        = expRes.data||[];
-    var owners      = ownerRes.data||[];
-    var hist        = histRes.data||[];
-
-    var discMap = {};
+    var allUnits   = unitsRes.data||[];
+    var hist       = histRes.data||[];
+    var cashPays   = cashPaysRes.data||[];
+    var accrualPays= accrualPaysRes.data||[];
+    var deps       = depsRes.data||[];
+    var refDeps    = refDepsRes.data||[];
+    var prevCash   = prevCashRes.data||[];
+    var prevAccrual= prevAccrualRes.data||[];
+    var departs    = departRes.data||[];
+    var exps       = expRes.data||[];
+    var owners     = ownerRes.data||[];
+    var discMap    = {};
     (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
 
-    // ── Unit categories ──
-    var occupied    = units.filter(function(u){ return isDashboardOccupied(u); });
-    var vacant      = units.filter(function(u){ return getUnitStatusKey(u)==='available'; });
-    var reserved    = units.filter(function(u){ return getUnitStatusKey(u)==='reserved'; });
-    var maintenance = units.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; });
+    // ── بناء snapshot للشهر المختار ──
+    // المستأجرين اللي كانوا موجودين في الشهر
+    // 1. من units الحالية اللي دخلوا في الشهر أو قبله
+    var currentInMonth = allUnits.filter(function(u){
+      if(!isDashboardOccupied(u)) return false;
+      var s = (u.start_date||'').slice(0,7);
+      return !s || s <= ym;
+    });
+
+    // 2. من unit_history — مستأجرين غادروا أو انتقلوا
+    var addedKeys = new Set();
+    var histUnitsForMonth = [];
+    hist.forEach(function(h){
+      var endYM = (h.end_date||'').slice(0,7);
+      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) return;
+      if(h.snapshot_type === 'internal_transfer_in') return;
+      if(endYM === ym && (h.end_date||'').slice(8,10) === '01') return;
+      // لو الوحدة فيها مستأجر حالي دخل في الشهر أو قبله — محسوب بالفعل
+      var cu = currentInMonth.find(function(u){ return u.id===h.unit_id; });
+      if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
+      var key = h.unit_id+'_'+(h.end_date||'');
+      if(!addedKeys.has(key)){
+        addedKeys.add(key);
+        histUnitsForMonth.push(h);
+      }
+    });
+
+    // كل المستأجرين في الشهر
+    var allInMonth = currentInMonth.concat(histUnitsForMonth.map(function(h){
+      return { id: h.unit_id, monthly_rent: h.monthly_rent||0, start_date: h.start_date, _isFormer: true };
+    }));
+
+    // ── Unit counts للشهر ──
+    var allUnitsCount = allUnits.length;
+    var occupiedInMonth = allInMonth.length;
+    var vacantInMonth   = allUnitsCount - occupiedInMonth;
+
+    // مشغولة دلوقتي (للـ badges الحالية)
     var departSet   = new Set((departs||[]).map(function(d){ return d.unit_id; }));
-    var leaving     = occupied.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
-    var newThisMonth= occupied.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
+    var leaving     = currentInMonth.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
+    var newThisMonth= currentInMonth.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
+    var reserved    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; });
+    var maintenance = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; });
+
+    // ── EXPECTED ──
+    var expected = allInMonth.reduce(function(s,u){
+      return s + Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
+    }, 0);
 
     // ── CASH totals ──
     var cashRent    = cashPays.reduce(function(s,p){ return s+(p.amount||0); },0);
@@ -126,36 +152,6 @@ async function loadSmartDash(ym) {
     var net         = cashTotal - cashRefunds - cashOut;
     var prevCashTot = prevCash.reduce(function(s,p){ return s+(p.amount||0); },0);
     var accrualPaid = accrualPays.reduce(function(s,p){ return s+(p.amount||0); },0);
-    var prevAccTot  = prevAccrual.reduce(function(s,p){ return s+(p.amount||0); },0);
-
-    // ── EXPECTED = المستهدف (نفس منطق التقرير) ──
-    // خطوة 1: المستأجرين الحاليين اللي كانوا موجودين في الشهر
-    var occupiedIds = new Set(occupied.map(function(u){ return u.id; }));
-    var expected = occupied.reduce(function(s,u){
-      if((u.start_date||'').slice(0,7) > ym) return s; // دخل بعد الشهر
-      return s + Math.max(0, (u.monthly_rent||0) - (discMap[u.id]||0));
-    }, 0);
-
-    // خطوة 2: المستأجرين السابقين من unit_history
-    var addedKeys = new Set();
-    hist.forEach(function(h){
-      var endYM = (h.end_date||'').slice(0,7);
-      // تجاهل نقل داخلي في نفس الشهر
-      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) return;
-      if(h.snapshot_type === 'internal_transfer_in') return;
-      // تجاهل لو خرج في أول يوم الشهر = غادر آخر الشهر السابق
-      if(endYM === ym && (h.end_date||'').slice(8,10) === '01') return;
-      // لو الوحدة فيها مستأجر حالي دخل في الشهر أو قبله — محسوب بالفعل
-      if(occupiedIds.has(h.unit_id)) {
-        var cu = occupied.find(function(u){ return u.id===h.unit_id; });
-        if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
-      }
-      var key = h.unit_id+'_'+(h.end_date||'');
-      if(!addedKeys.has(key)){
-        addedKeys.add(key);
-        expected += (h.monthly_rent||0);
-      }
-    });
 
     // ── Remaining & pct ──
     var remaining = Math.max(0, expected - accrualPaid);
@@ -165,9 +161,22 @@ async function loadSmartDash(ym) {
     var diffColor = diff>=0?'var(--green)':'var(--red)';
     var diffArrow = diff>=0?'↑':'↓';
 
-    var el = function(id){ return document.getElementById(id); };
+    // ── Payment status للشهر ──
+    var accrualPaidMap = {};
+    accrualPays.forEach(function(p){ accrualPaidMap[p.unit_id]=(accrualPaidMap[p.unit_id]||0)+(p.amount||0); });
+    var paidCount=0, partCount=0, unpaidCount=0;
+    allInMonth.forEach(function(u){
+      var got  = accrualPaidMap[u.id]||0;
+      var rent = Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
+      if(rent === 0) return;
+      if(got >= rent) paidCount++;
+      else if(got > 0) partCount++;
+      else unpaidCount++;
+    });
 
     // ── Update UI ──
+    var el = function(id){ return document.getElementById(id); };
+
     if(el('dash-pct')) { el('dash-pct').textContent = pct+'%'; el('dash-pct').style.color = pct>=90?'var(--green)':pct>=60?'var(--amber)':'var(--red)'; }
     if(el('dash-pct-cmp') && prevCashTot>0) el('dash-pct-cmp').innerHTML = '<span style="color:'+diffColor+'">'+diffArrow+' '+Math.abs(diff).toLocaleString()+' AED</span>';
     var pb = el('dash-progress-bar');
@@ -183,38 +192,28 @@ async function loadSmartDash(ym) {
     if(el('dash-cashout'))       el('dash-cashout').textContent       = cashOut.toLocaleString()+' AED';
     if(el('dash-net'))           { el('dash-net').textContent=net.toLocaleString()+' AED'; el('dash-net').style.color=net>=0?'var(--green)':'var(--red)'; }
 
-    if(el('dash-occupied'))      el('dash-occupied').textContent      = occupied.length;
-    if(el('dash-vacant'))        el('dash-vacant').textContent        = vacant.length;
+    // Unit counts
+    if(el('dash-occupied'))      el('dash-occupied').textContent      = occupiedInMonth;
+    if(el('dash-vacant'))        el('dash-vacant').textContent        = vacantInMonth;
     if(el('dash-leaving'))       el('dash-leaving').textContent       = leaving.length;
     if(el('dash-new'))           el('dash-new').textContent           = newThisMonth.length;
     if(el('dash-reserved'))      el('dash-reserved').textContent      = reserved.length;
     if(el('dash-maintenance'))   el('dash-maintenance').textContent   = maintenance.length;
+
+    // Payment badges
+    if(el('dash-paid-count'))    el('dash-paid-count').textContent    = paidCount;
+    if(el('dash-partial-count')) el('dash-partial-count').textContent = partCount;
+    if(el('dash-unpaid-count'))  el('dash-unpaid-count').textContent  = unpaidCount;
 
     var { data: pendingBookings }  = await sb.from('moves').select('id').eq('type','arrive').eq('status','pending');
     var { data: pendingTransfers } = await sb.from('internal_transfers').select('id').like('notes','%مجدوله%');
     if(el('dash-pending-bookings'))  el('dash-pending-bookings').textContent  = (pendingBookings||[]).length;
     if(el('dash-pending-transfers')) el('dash-pending-transfers').textContent = (pendingTransfers||[]).length;
 
-    // Unit status badges (green/amber/red)
-    var accrualPaidMap = {};
-    accrualPays.forEach(function(p){ accrualPaidMap[p.unit_id]=(accrualPaidMap[p.unit_id]||0)+(p.amount||0); });
-    var paidCount=0, partCount=0, unpaidCount=0;
-    occupied.forEach(function(u){
-      var got  = accrualPaidMap[u.id]||0;
-      var rent = Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
-      if(got >= rent && rent > 0) paidCount++;
-      else if(got > 0) partCount++;
-      else if(rent > 0) unpaidCount++;
-    });
-    if(el('dash-paid-count'))   el('dash-paid-count').textContent   = paidCount;
-    if(el('dash-partial-count'))el('dash-partial-count').textContent = partCount;
-    if(el('dash-unpaid-count')) el('dash-unpaid-count').textContent  = unpaidCount;
-
   } catch(e) {
     console.error('loadSmartDash:', e);
     ['dash-collected','dash-expected','dash-remaining','dash-pct'].forEach(function(id){
-      var el2 = document.getElementById(id);
-      if(el2) el2.textContent = '—';
+      var el2 = document.getElementById(id); if(el2) el2.textContent = '—';
     });
   }
 }
