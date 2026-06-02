@@ -1034,7 +1034,7 @@ async function sendWelcomeWA() {
   var d = getWelcomeData();
   await persistWelcomeData(d);
   var phone = (d.phone || '').replace(/\D/g, '');
-  var msg = buildWAMsg(d);
+  var msg = buildDepositWAMsg(d);
   var url = 'https://wa.me/' + (phone || '') + '?text=' + encodeURIComponent(msg);
   if(url.length > 2000) {
     var shortMsg = (LANG==='ar'?'مرحباً ':'Hello ') + d.name + '\nBP:' + d.room + '-' + d.apt + '\n' + d.rent + ' AED/mo';
@@ -1045,7 +1045,7 @@ async function sendWelcomeWA() {
   } catch(e) { toast((LANG==='ar'?'خطأ:':'Error:') + e.message,'err'); }
 }
 
-function buildWAMsg(d) {
+function buildDepositWAMsg(d) {
   var totalDeposit = Number(d.dep||0)||0;
   var received = Number(d.dep||0)||0;
   var remaining = Math.max(0, totalDeposit - received);
