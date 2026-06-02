@@ -7,7 +7,10 @@ function showWAModal(apt, room, tenantNum) {
   // Pick correct tenant based on tenantNum (1 or 2)
   var isT2 = tenantNum===2 && unit.tenant_name2;
   var tenantName = isT2 ? unit.tenant_name2 : (unit.tenant_name||'المستأجر');
-  var tenantRent = isT2 ? (unit.rent2||unit.monthly_rent) : (unit.rent1||unit.monthly_rent);
+  var tenantRentBase = isT2 ? (unit.rent2||unit.monthly_rent) : (unit.rent1||unit.monthly_rent);
+  // طبّق الخصم المؤقت لو موجود
+  var _disc = (!isT2 && window._discountMapCache) ? (window._discountMapCache[unit.id]||0) : 0;
+  var tenantRent = Math.max(0, tenantRentBase - _disc);
   var rawPhone   = isT2 ? (unit.phone2||'') : (unit.phone||'');
 
   var phone = rawPhone.replace(/\D/g,'');
