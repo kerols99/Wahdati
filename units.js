@@ -60,10 +60,15 @@ async function loadHome(btn, force) {
       else { unpaid++; remaining += rent; lateUnits.push({...u,got:0,rem:rent,monthly_rent:rent,status:'unpaid'}); }
     });
 
-    document.getElementById('sp').textContent  = paid;
-    document.getElementById('spar').textContent = partial;
-    document.getElementById('su').textContent   = unpaid;
-    document.getElementById('srem').textContent = remaining>=1000?(remaining/1000).toFixed(1)+'k':remaining;
+    // حالة الدفع — IDs الجديدة في الداشبورد
+    var _elSp   = document.getElementById('dash-paid-count');
+    var _elSpar = document.getElementById('dash-partial-count');
+    var _elSu   = document.getElementById('dash-unpaid-count');
+    var _elSrem = document.getElementById('dash-remaining');
+    if(_elSp)   _elSp.textContent   = paid;
+    if(_elSpar) _elSpar.textContent = partial;
+    if(_elSu)   _elSu.textContent   = unpaid;
+    if(_elSrem && !window._dashLoaded) _elSrem.textContent = (remaining>=1000?(remaining/1000).toFixed(1)+'k':remaining.toLocaleString())+' AED';
 
     // Update nav badges
     var nb = document.getElementById('nav-badge');
