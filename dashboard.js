@@ -183,39 +183,52 @@ async function loadSmartDash(ym) {
 
     // ── Update UI ──
     var el = function(id){ return document.getElementById(id); };
+    var fmt = function(n){ return n>=1000?(n/1000).toFixed(1)+'k':n.toLocaleString(); };
+    var pctColor = pct>=90?'var(--green)':pct>=60?'var(--amber)':'var(--red)';
 
-    if(el('dash-pct')) { el('dash-pct').textContent = pct+'%'; el('dash-pct').style.color = pct>=90?'var(--green)':pct>=60?'var(--amber)':'var(--red)'; }
-    if(el('dash-pct-cmp') && prevCashTot>0) el('dash-pct-cmp').innerHTML = '<span style="color:'+diffColor+'">'+diffArrow+' '+Math.abs(diff).toLocaleString()+' AED</span>';
-    var pb = el('dash-progress-bar');
-    if(pb){ pb.style.width=Math.min(pct,100)+'%'; pb.style.background=pct>=90?'var(--green)':pct>=60?'var(--amber)':'var(--red)'; }
+    // نسبة التحصيل
+    if(el('dash-pct')){ el('dash-pct').textContent=pct+'%'; el('dash-pct').style.color=pctColor; }
+    if(el('dash-pct-cmp')) el('dash-pct-cmp').innerHTML = prevCashTot>0?'<span style="color:'+diffColor+'">'+diffArrow+' '+diffPct+'%</span>':'';
+    var pb=el('dash-progress-bar'); if(pb){ pb.style.width=Math.min(pct,100)+'%'; pb.style.background=pctColor; }
 
-    if(el('dash-collected'))     el('dash-collected').textContent     = (cashTotal>=1000?(cashTotal/1000).toFixed(1)+'k':cashTotal.toLocaleString())+' AED';
-    if(el('dash-collected-cmp') && prevCashTot>0) el('dash-collected-cmp').innerHTML = '<span style="color:'+diffColor+'">'+diffArrow+' '+diffPct+'% عن الشهر الماضي</span>';
-    if(el('dash-expected'))      el('dash-expected').textContent      = (expected>=1000?(expected/1000).toFixed(1)+'k':expected.toLocaleString())+' AED';
-    if(el('dash-expected-pct'))  el('dash-expected-pct').textContent  = (LANG==='ar'?'محصّل فعلياً: ':'Paid: ')+accrualPaid.toLocaleString()+' AED';
-    if(el('dash-remaining'))     { el('dash-remaining').textContent=(remaining>0?remaining.toLocaleString():'0')+' AED'; el('dash-remaining').style.color=remaining>0?'var(--red)':'var(--green)'; }
-    if(el('dash-expenses'))      el('dash-expenses').textContent      = totalExp.toLocaleString()+' AED';
-    if(el('dash-owner'))         el('dash-owner').textContent         = totalOwner.toLocaleString()+' AED';
-    if(el('dash-cashout'))       el('dash-cashout').textContent       = cashOut.toLocaleString()+' AED';
-    if(el('dash-net'))           { el('dash-net').textContent=net.toLocaleString()+' AED'; el('dash-net').style.color=net>=0?'var(--green)':'var(--red)'; }
+    // الملخص المالي — المستهدف بالإيجار الاستحقاقي
+    if(el('dash-expected'))     el('dash-expected').textContent    = fmt(expected)+' AED';
+    if(el('dash-expected-sub')) el('dash-expected-sub').textContent= LANG==='ar'?'إيجار الشهر':'Monthly target';
+    if(el('dash-collected'))    el('dash-collected').textContent   = fmt(accrualPaid)+' AED';
+    if(el('dash-collected-cmp'))el('dash-collected-cmp').innerHTML = prevCashTot>0?'<span style="color:'+diffColor+'">'+diffArrow+' '+diffPct+'% من الماضي</span>':'';
+    if(el('dash-remaining'))    { el('dash-remaining').textContent=(remaining>0?remaining.toLocaleString():'0')+' AED'; el('dash-remaining').style.color=remaining>0?'var(--red)':'var(--green)'; }
+    if(el('dash-expected-pct')) el('dash-expected-pct').textContent= LANG==='ar'?'استحقاق الشهر':'Accrual basis';
 
-    // Unit counts
-    if(el('dash-occupied'))      el('dash-occupied').textContent      = occupiedInMonth;
-    if(el('dash-vacant'))        el('dash-vacant').textContent        = vacantInMonth;
-    if(el('dash-leaving'))       el('dash-leaving').textContent       = leaving.length;
-    if(el('dash-new'))           el('dash-new').textContent           = newThisMonth.length;
-    if(el('dash-reserved'))      el('dash-reserved').textContent      = reserved.length;
-    if(el('dash-maintenance'))   el('dash-maintenance').textContent   = maintenance.length;
+    // الكاش الصافي
+    if(el('dash-cash'))     el('dash-cash').textContent     = fmt(cashTotal)+' AED';
+    if(el('dash-cash-sub')) el('dash-cash-sub').textContent = accrualPaid.toLocaleString()+' + '+cashDeps.toLocaleString()+' تأمين';
+    if(el('dash-net'))      { el('dash-net').textContent=net.toLocaleString()+' AED'; el('dash-net').style.color=net>=0?'var(--green)':'var(--red)'; }
+    if(el('dash-net-sub'))  el('dash-net-sub').textContent  = cashOut>0?'- '+cashOut.toLocaleString()+' مصاريف':(LANG==='ar'?'لا مصاريف':'No expenses');
 
-    // Payment badges
+    // حالة الوحدات
+    if(el('dash-occupied')) el('dash-occupied').textContent = occupiedInMonth;
+    if(el('dash-vacant'))   el('dash-vacant').textContent   = vacantInMonth;
+    if(el('dash-leaving'))  el('dash-leaving').textContent  = leaving.length;
+    if(el('dash-new'))      el('dash-new').textContent      = newThisMonth.length;
+
+    // حالة الدفع
     if(el('dash-paid-count'))    el('dash-paid-count').textContent    = paidCount;
     if(el('dash-partial-count')) el('dash-partial-count').textContent = partCount;
     if(el('dash-unpaid-count'))  el('dash-unpaid-count').textContent  = unpaidCount;
+
+    // مقارنة بالشهر السابق
+    if(el('dash-compare') && prevCashTot>0){
+      el('dash-compare').innerHTML = '📊 '+(LANG==='ar'?'مقارنة: الماضي ':'vs last: ')
+        +prevCashTot.toLocaleString()+' ← '+accrualPaid.toLocaleString()
+        +' <b style="color:'+diffColor+'">'+diffArrow+diffPct+'%</b>';
+    }
 
     var { data: pendingBookings }  = await sb.from('moves').select('id').eq('type','arrive').eq('status','pending');
     var { data: pendingTransfers } = await sb.from('internal_transfers').select('id').like('notes','%مجدوله%');
     if(el('dash-pending-bookings'))  el('dash-pending-bookings').textContent  = (pendingBookings||[]).length;
     if(el('dash-pending-transfers')) el('dash-pending-transfers').textContent = (pendingTransfers||[]).length;
+    if(el('dash-reserved'))          el('dash-reserved').textContent          = reserved.length;
+    if(el('dash-maintenance'))       el('dash-maintenance').textContent       = maintenance.length;
 
   } catch(e) {
     console.error('loadSmartDash:', e);

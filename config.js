@@ -230,6 +230,7 @@ function goPanel(name) {
   CURRENT_PANEL = name;
   if(name==='home' && window.loadHome) loadHome(document.getElementById('btn-refresh'), false);
   if(name==='units' && window.loadUnits) loadUnits();
+  if(name==='settings' && window.loadWATemplatesIntoSettings) loadWATemplatesIntoSettings();
   if(name==='pay' || name==='reports') {
     // تحديث كل month inputs بالشهر المختار
     var _ym    = window.getActiveMonth    ? getActiveMonth()    : (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));

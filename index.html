@@ -65,96 +65,111 @@
 <div class="content">
 <!-- ── HOME ── -->
 <div class="panel active" id="panel-home">
-<div class="sh" style="margin-bottom:12px">
+
+<!-- Header -->
+<div class="sh" style="margin-bottom:10px">
   <div>
     <h2 id="h-home" style="margin-bottom:2px">الرئيسية</h2>
     <span id="home-month" style="font-size:.75rem;color:var(--muted)"></span>
   </div>
   <button onclick="loadHome(this,true)" style="padding:7px 13px;background:var(--surf2);border:1px solid var(--border);border-radius:20px;color:var(--muted);font-family:var(--font);font-size:.72rem;cursor:pointer">🔄 تحديث</button>
 </div>
-<div class="sgrid">
-<div class="scard" onclick="goPanel('units');setTimeout(function(){setFilter('paid',document.querySelector('[data-filter=paid]'));},150)" style="cursor:pointer;touch-action:manipulation"><div class="snum" id="sp" style="color:var(--green)">0</div><div class="slbl" id="sl-paid">مدفوعة</div><div class="ssub" id="ss-paid">وحدة ←</div></div>
-<div class="scard" onclick="goPanel('units');setTimeout(function(){setFilter('partial',document.querySelector('[data-filter=partial]'));},150)" style="cursor:pointer;touch-action:manipulation"><div class="snum" id="spar" style="color:var(--amber)">0</div><div class="slbl" id="sl-partial">جزئية</div><div class="ssub" id="ss-partial">وحدة ←</div></div>
-<div class="scard" onclick="goPanel('units');setTimeout(function(){setFilter('unpaid',document.querySelector('[data-filter=unpaid]'));},150)" style="cursor:pointer;touch-action:manipulation"><div class="snum" id="su" style="color:var(--red)">0</div><div class="slbl" id="sl-unpaid">غير مدفوعة</div><div class="ssub" id="ss-unpaid">وحدة ←</div></div>
-<div class="scard"><div class="snum" id="srem" style="color:var(--accent)">0</div><div class="slbl" id="sl-remaining">المتبقي</div><div class="ssub" id="ss-remaining">AED</div></div>
-</div>
-<!-- Smart Dashboard -->
-<div id="smart-dash" style="margin-bottom:12px">
 
-  <!-- Row 1: Financial KPIs — with progress bar -->
-  <div style="background:var(--surf2);border-radius:14px;padding:14px;margin-bottom:8px">
-    <!-- Progress bar -->
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-      <div style="font-size:.62rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px">📊 نسبة التحصيل</div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <span id="dash-pct" style="font-size:1.1rem;font-weight:800;color:var(--green)">—</span>
-        <span id="dash-pct-cmp" style="font-size:.62rem;color:var(--muted)"></span>
-      </div>
+<!-- ═══ SECTION 1: الملخص المالي ═══ -->
+<div style="background:var(--surf2);border-radius:14px;padding:14px;margin-bottom:8px">
+
+  <!-- نسبة التحصيل + progress bar -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:.62rem;color:var(--muted);font-weight:700;letter-spacing:.5px">📊 نسبة التحصيل</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="dash-pct" style="font-size:1.2rem;font-weight:900;color:var(--green)">—</span>
+      <span id="dash-pct-cmp" style="font-size:.62rem;color:var(--muted)"></span>
     </div>
-    <div style="height:8px;background:var(--surf3);border-radius:4px;overflow:hidden;margin-bottom:12px">
-      <div id="dash-progress-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width .6s ease"></div>
+  </div>
+  <div style="height:8px;background:var(--surf3);border-radius:4px;overflow:hidden;margin-bottom:14px">
+    <div id="dash-progress-bar" style="height:100%;background:var(--green);border-radius:4px;width:0%;transition:width .7s ease"></div>
+  </div>
+
+  <!-- KPIs: مستهدف / محصّل / متبقي -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+    <div style="background:var(--surf);border-radius:10px;padding:10px 8px;text-align:center">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">🎯 مستهدف</div>
+      <div id="dash-expected" style="font-weight:900;font-size:.9rem;color:var(--accent)">—</div>
+      <div id="dash-expected-sub" style="font-size:.55rem;color:var(--muted);margin-top:2px">إيجار الشهر</div>
     </div>
-    <!-- 3 KPI cells -->
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-      <div>
-        <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">💵 محصّل</div>
-        <div id="dash-collected" style="font-weight:800;font-size:.88rem;color:var(--green)">—</div>
-        <div id="dash-collected-cmp" style="font-size:.58rem;margin-top:1px;color:var(--muted)"></div>
-      </div>
-      <div>
-        <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">🎯 مستهدف</div>
-        <div id="dash-expected" style="font-weight:800;font-size:.88rem;color:var(--accent)">—</div>
-        <div id="dash-expected-pct" style="font-size:.58rem;margin-top:1px;color:var(--muted)"></div>
-      </div>
-      <div>
-        <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">⏳ متبقي</div>
-        <div id="dash-remaining" style="font-weight:800;font-size:.88rem;color:var(--red)">—</div>
-        <div id="dash-pct-cmp" style="font-size:.58rem;margin-top:1px;color:var(--muted)"></div>
-      </div>
+    <div style="background:var(--surf);border-radius:10px;padding:10px 8px;text-align:center">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">✅ محصّل</div>
+      <div id="dash-collected" style="font-weight:900;font-size:.9rem;color:var(--green)">—</div>
+      <div id="dash-collected-cmp" style="font-size:.55rem;color:var(--muted);margin-top:2px"></div>
+    </div>
+    <div style="background:var(--surf);border-radius:10px;padding:10px 8px;text-align:center">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:3px">⏳ متبقي</div>
+      <div id="dash-remaining" style="font-weight:900;font-size:.9rem;color:var(--red)">—</div>
+      <div id="dash-expected-pct" style="font-size:.55rem;color:var(--muted);margin-top:2px"></div>
     </div>
   </div>
 
-  <!-- Row 2: Unit Status Grid — clickable cells -->
-  <div style="background:var(--surf2);border-radius:14px;padding:10px 12px;margin-bottom:8px">
-    <div style="font-size:.62rem;color:var(--muted);font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">🏢 حالة الوحدات</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('all',document.querySelector('[data-filter=all]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-occupied" style="font-weight:800;font-size:1.2rem;color:var(--green)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">مشغولة</div>
-      </div>
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('vacant',document.querySelector('[data-filter=vacant]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-vacant" style="font-weight:800;font-size:1.2rem;color:var(--muted)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">شاغرة</div>
-      </div>
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('leaving',document.querySelector('[data-filter=leaving]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-leaving" style="font-weight:800;font-size:1.2rem;color:var(--amber)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">مغادرة</div>
-      </div>
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('unpaid',document.querySelector('[data-filter=unpaid]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-new" style="font-weight:800;font-size:1.2rem;color:var(--accent)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">جديد</div>
-      </div>
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('reserved',document.querySelector('[data-filter=reserved]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-reserved" style="font-weight:800;font-size:1.2rem;color:var(--purple)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">محجوز</div>
-      </div>
-      <div onclick="goPanel('moves');setTimeout(function(){document.getElementById('moves-tab-arrive').click();},200)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-pending-bookings" style="font-weight:800;font-size:1.2rem;color:var(--accent)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">حجز قادم 📋</div>
-      </div>
-      <div onclick="goPanel('moves');setTimeout(function(){document.getElementById('moves-tab-internal').click();},200)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-pending-transfers" style="font-weight:800;font-size:1.2rem;color:var(--purple)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">نقل قادم 🔄</div>
-      </div>
-      <div onclick="goPanel('units');setTimeout(function(){setFilter('maintenance',document.querySelector('[data-filter=maintenance]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;transition:transform .12s;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
-        <div id="dash-maintenance" style="font-weight:800;font-size:1.2rem;color:var(--amber)">—</div>
-        <div style="font-size:.6rem;color:var(--muted);margin-top:2px">صيانة</div>
-      </div>
+  <!-- الكاش الصافي -->
+  <div style="border-top:1px solid var(--border);padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <div style="text-align:center">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">💵 إجمالي الكاش</div>
+      <div id="dash-cash" style="font-weight:800;font-size:.85rem;color:var(--green)">—</div>
+      <div id="dash-cash-sub" style="font-size:.55rem;color:var(--muted);margin-top:1px">إيجار + تأمين</div>
+    </div>
+    <div style="text-align:center">
+      <div style="font-size:.58rem;color:var(--muted);margin-bottom:2px">🏦 الصافي</div>
+      <div id="dash-net" style="font-weight:800;font-size:.85rem;color:var(--green)">—</div>
+      <div id="dash-net-sub" style="font-size:.55rem;color:var(--muted);margin-top:1px">بعد المصاريف</div>
     </div>
   </div>
-
 </div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+
+<!-- ═══ SECTION 2: حالة الوحدات ═══ -->
+<div style="background:var(--surf2);border-radius:14px;padding:12px;margin-bottom:8px">
+  <div style="font-size:.62rem;color:var(--muted);font-weight:700;margin-bottom:8px;letter-spacing:.5px">🏢 حالة الوحدات</div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('all',document.querySelector('[data-filter=all]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-occupied" style="font-weight:900;font-size:1.3rem;color:var(--green)">—</div>
+      <div style="font-size:.58rem;color:var(--muted);margin-top:2px">مشغولة</div>
+    </div>
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('vacant',document.querySelector('[data-filter=vacant]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-vacant" style="font-weight:900;font-size:1.3rem;color:var(--muted)">—</div>
+      <div style="font-size:.58rem;color:var(--muted);margin-top:2px">شاغرة</div>
+    </div>
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('leaving',document.querySelector('[data-filter=leaving]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-leaving" style="font-weight:900;font-size:1.3rem;color:var(--amber)">—</div>
+      <div style="font-size:.58rem;color:var(--muted);margin-top:2px">مغادرة</div>
+    </div>
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('unpaid',document.querySelector('[data-filter=unpaid]'));},150)" style="text-align:center;padding:8px 4px;background:var(--surf);border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-new" style="font-weight:900;font-size:1.3rem;color:var(--accent)">—</div>
+      <div style="font-size:.58rem;color:var(--muted);margin-top:2px">جديد</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SECTION 3: حالة الدفع ═══ -->
+<div style="background:var(--surf2);border-radius:14px;padding:12px;margin-bottom:8px">
+  <div style="font-size:.62rem;color:var(--muted);font-weight:700;margin-bottom:8px;letter-spacing:.5px">💳 حالة الدفع</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('paid',document.querySelector('[data-filter=paid]'));},150)" style="text-align:center;padding:10px 4px;background:var(--green)15;border:1px solid var(--green)33;border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-paid-count" style="font-weight:900;font-size:1.4rem;color:var(--green)">—</div>
+      <div style="font-size:.6rem;color:var(--green);margin-top:2px;font-weight:700">✅ مدفوع</div>
+    </div>
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('partial',document.querySelector('[data-filter=partial]'));},150)" style="text-align:center;padding:10px 4px;background:var(--amber)15;border:1px solid var(--amber)33;border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-partial-count" style="font-weight:900;font-size:1.4rem;color:var(--amber)">—</div>
+      <div style="font-size:.6rem;color:var(--amber);margin-top:2px;font-weight:700">⚠️ جزئي</div>
+    </div>
+    <div onclick="goPanel('units');setTimeout(function(){setFilter('unpaid',document.querySelector('[data-filter=unpaid]'));},150)" style="text-align:center;padding:10px 4px;background:var(--red)15;border:1px solid var(--red)33;border-radius:10px;cursor:pointer;touch-action:manipulation" ontouchstart="this.style.transform='scale(.93)'" ontouchend="this.style.transform=''">
+      <div id="dash-unpaid-count" style="font-weight:900;font-size:1.4rem;color:var(--red)">—</div>
+      <div style="font-size:.6rem;color:var(--red);margin-top:2px;font-weight:700">❌ غير مدفوع</div>
+    </div>
+  </div>
+  <!-- مقارنة بالشهر السابق -->
+  <div id="dash-compare" style="margin-top:8px;padding:8px 10px;background:var(--surf);border-radius:8px;font-size:.65rem;color:var(--muted);text-align:center"></div>
+</div>
+
+<!-- ═══ SECTION 4: أزرار الإجراءات ═══ -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
   <button onclick="openLatePayersPanel()" style="padding:11px;background:var(--red)18;border:1.5px solid var(--red)44;border-radius:14px;color:var(--red);font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer">
     ⚠️ المتأخرون
   </button>
@@ -163,7 +178,9 @@
   </button>
 </div>
 <button class="btn bg" data-click="goReports" id="btn-reports" style="margin-bottom:12px">📊 عرض التقارير التفصيلية</button>
-<div class="card" style="margin-top:14px">
+
+<!-- المتأخرون -->
+<div class="card" style="margin-top:8px">
 <div class="clbl" id="lbl-late">المتأخرون هذا الشهر</div>
 <div id="lateList"></div>
 </div>
@@ -556,6 +573,27 @@
 <button class="btn bg" data-click="loadTeam" id="btn-update-list" style="margin-top:10px">🔄 تحديث القائمة</button>
 </div>
 </div>
+<!-- قوالب رسائل واتساب -->
+<div class="card">
+<div class="clbl">💬 قوالب رسائل واتساب</div>
+<div style="font-size:.72rem;color:var(--muted);margin-bottom:12px">المتغيرات المتاحة: {name} {apt} {room} {month} {year} {amount}</div>
+
+<div class="fld">
+  <label style="font-size:.78rem;font-weight:700;margin-bottom:6px;display:block">🇦🇪 رسالة التذكير — عربي</label>
+  <textarea id="wa-template-ar" style="width:100%;height:110px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:inherit;font-size:.78rem;resize:vertical;direction:rtl"></textarea>
+</div>
+
+<div class="fld" style="margin-top:10px">
+  <label style="font-size:.78rem;font-weight:700;margin-bottom:6px;display:block">🇬🇧 رسالة التذكير — English</label>
+  <textarea id="wa-template-en" style="width:100%;height:110px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font-family:inherit;font-size:.78rem;resize:vertical;direction:ltr"></textarea>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:10px">
+  <button onclick="saveWATemplates()" style="flex:1;padding:11px;background:var(--green)22;border:1.5px solid var(--green)55;border-radius:12px;color:var(--green);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer">💾 حفظ القوالب</button>
+  <button onclick="resetWATemplates()" style="padding:11px 16px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--muted);font-family:var(--font);font-size:.78rem;cursor:pointer">↺ إعادة تعيين</button>
+</div>
+</div>
+
 <!-- Install iPhone -->
 <div class="card">
 <div class="clbl" id="lbl-install">تثبيت على iPhone</div>

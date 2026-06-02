@@ -18,9 +18,9 @@ function showWAModal(apt, room, tenantNum) {
   var monthNamesEN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   var isAR = unit.language==='ar';
-  var msg = isAR
-    ? `عزيزي ${tenantName}، \nنود تذكيركم بأن إيجار شقة ${apt} غرفة ${room} لشهر ${monthNames[now.getMonth()]} ${now.getFullYear()} بمبلغ ${tenantRent} درهم لم يُسدَّد بعد.\nنرجو التكرم بالسداد في أقرب وقت.\nشكراً لتعاونكم 🙏`
-    : `Dear ${tenantName},\nThis is a reminder that rent for Apartment ${apt}, Room ${room} for ${monthNamesEN[now.getMonth()]} ${now.getFullYear()} amounting to ${tenantRent} AED has not been paid.\nKindly settle the payment at your earliest convenience.\nThank you 🙏`;
+  var msgLang = isAR ? 'ar' : 'en';
+  var msgMonth = isAR ? monthNames[now.getMonth()] : monthNamesEN[now.getMonth()];
+  var msg = buildWAMsg(msgLang, tenantName, apt, room, msgMonth, now.getFullYear(), tenantRent);
 
   var modal = document.createElement('div');
   modal.id = 'wa-modal';
@@ -51,3 +51,51 @@ function sendWA(apt, room) { showWAModal(apt, room); }
 
 
 window.showWAModal=showWAModal; window.sendWA=sendWA;
+// ══ WA TEMPLATES ══
+
+var WA_DEFAULT_AR = 'عزيزي {name}،\nنود تذكيركم بأن إيجار شقة {apt} غرفة {room} لشهر {month} {year} بمبلغ {amount} درهم لم يُسدَّد بعد.\nنرجو التكرم بالسداد في أقرب وقت.\nشكراً لتعاونكم 🙏';
+
+var WA_DEFAULT_EN = 'Dear {name},\nThis is a reminder that the rent for Apartment {apt}, Room {room} for {month} {year}, amounting to AED {amount}, has not yet been paid.\nKindly make the payment today.\nThank you 🙏';
+
+function getWATemplate(lang) {
+  var key = lang === 'ar' ? 'wa_template_ar' : 'wa_template_en';
+  var def = lang === 'ar' ? WA_DEFAULT_AR : WA_DEFAULT_EN;
+  return localStorage.getItem(key) || def;
+}
+
+function buildWAMsg(lang, name, apt, room, month, year, amount) {
+  return getWATemplate(lang)
+    .replace(/{name}/g, name)
+    .replace(/{apt}/g, apt)
+    .replace(/{room}/g, room)
+    .replace(/{month}/g, month)
+    .replace(/{year}/g, year)
+    .replace(/{amount}/g, Number(amount).toLocaleString());
+}
+
+function saveWATemplates() {
+  var ar = document.getElementById('wa-template-ar');
+  var en = document.getElementById('wa-template-en');
+  if(ar) localStorage.setItem('wa_template_ar', ar.value);
+  if(en) localStorage.setItem('wa_template_en', en.value);
+  toast(LANG==='ar'?'✅ تم حفظ القوالب':'✅ Templates saved','ok');
+}
+
+function resetWATemplates() {
+  localStorage.removeItem('wa_template_ar');
+  localStorage.removeItem('wa_template_en');
+  loadWATemplatesIntoSettings();
+  toast(LANG==='ar'?'تمت إعادة التعيين':'Reset done','ok');
+}
+
+function loadWATemplatesIntoSettings() {
+  var ar = document.getElementById('wa-template-ar');
+  var en = document.getElementById('wa-template-en');
+  if(ar) ar.value = getWATemplate('ar');
+  if(en) en.value = getWATemplate('en');
+}
+
+window.saveWATemplates = saveWATemplates;
+window.resetWATemplates = resetWATemplates;
+window.loadWATemplatesIntoSettings = loadWATemplatesIntoSettings;
+window.buildWAMsg = buildWAMsg;
