@@ -48,6 +48,9 @@ async function loadMonthly(btn) {
     var monNextStart = _monDate.getFullYear()+'-'+String(_monDate.getMonth()+1).padStart(2,'0')+'-01';
     // آخر يوم في الشهر الجاي — عشان نشمل internal_transfer_out في الشهر الجاي
     var monNextMonthEnd = window.monthEnd ? monthEnd(_monDate.getFullYear()+'-'+String(_monDate.getMonth()+1).padStart(2,'0')) : monNextStart.slice(0,7)+'-31';
+    // أول يوم في الشهر التالت — عشان نشمل departure اللي end_date = أول يوم الشهر التاني
+    var _monDate2 = new Date(ym+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
+    var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
     var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
@@ -68,7 +71,7 @@ async function loadMonthly(btn) {
       // مش بنفلتر بـ start_date عشان ممكن يكون null
       sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,deposit,start_date,end_date,snapshot_type')
         .gte('end_date', monStart)
-        .lte('end_date', monNextMonthEnd)
+        .lte('end_date', monNext2Start) // شامل أول يوم الشهر التالت عشان نمسك departure متأخر
     ]);
     var allUnits     = unitsRes.data||[];
     var histUnits    = (histRes && histRes.data) ? histRes.data : [];
@@ -117,6 +120,8 @@ async function loadMonthly(btn) {
       if(h.end_date && endDateYM < monYMcheck) return;
       // لو خرج في أول يوم من الشهر = غادر آخر الشهر السابق — تجاهله
       if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
+      // لو خرج بعد الشهر التالي مباشرة (مثلاً end_date = 2026-06-01 وإحنا في أبريل) — المستأجر لسه موجود
+      // مش بنشيله — نضيفه للتقرير لأنه كان ساكن في الشهر المختار
       // لو نقل داخلي — المستأجر لسه في المبنى، ما يظهرش كمغادر في التقرير
       // النقل الداخلي — تجاهله بس لو حصل في نفس الشهر المختار (المستأجر انتقل هذا الشهر)
       // لو حصل في شهر تاني — المستأجر كان موجود في الشهر المختار فيظهر
