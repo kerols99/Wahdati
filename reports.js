@@ -124,10 +124,24 @@ async function loadMonthly(btn) {
       if(h.snapshot_type === 'internal_transfer_in') return;
 
       if(!existingIds.has(h.unit_id)) {
-        // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق
+        // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق من unit_history
         addedHistKeys.add(uniqueKey);
         units.push(formerUnit);
         existingIds.add(h.unit_id);
+        currentStartMap[h.unit_id] = startDateYM;
+      } else if(existingIds.has(h.unit_id) && (function(){
+        // لو الوحدة موجودة في units بس monthly_rent = 0 أو tenant_name = null
+        // ده معناه إنها اتفرّغت وبياناتها اتمسحت — استبدلها بالـ unit_history
+        var existing = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+        // بس لو monthly_rent = 0 — الوحدة اتفرّغت وبياناتها اتمسحت
+        return existing && (!existing.monthly_rent || existing.monthly_rent === 0);
+      })()) {
+        var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+        if(idx > -1) {
+          addedHistKeys.add(uniqueKey);
+          units[idx] = formerUnit;
+          currentStartMap[h.unit_id] = startDateYM;
+        }
       } else {
         var currentStartYM = currentStartMap[h.unit_id] || '';
 
