@@ -49,7 +49,7 @@ async function loadMonthly(btn) {
     // آخر يوم في الشهر الجاي — عشان نشمل internal_transfer_out في الشهر الجاي
     var monNextMonthEnd = window.monthEnd ? monthEnd(_monDate.getFullYear()+'-'+String(_monDate.getMonth()+1).padStart(2,'0')) : monNextStart.slice(0,7)+'-31';
     // أول يوم في الشهر التالت — عشان نشمل departure اللي end_date = أول يوم الشهر التاني
-    var _monDate2 = new Date(ym+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
+    var _monDate2 = new Date(mon.slice(0,7)+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
     var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
     var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
