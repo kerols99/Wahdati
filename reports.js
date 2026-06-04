@@ -51,7 +51,7 @@ async function loadMonthly(btn) {
     // أول يوم في الشهر التالت — عشان نشمل departure اللي end_date = أول يوم الشهر التاني
     var _monDate2 = new Date(mon.slice(0,7)+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
     var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
-    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes] = await Promise.all([
+    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes, discRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
@@ -71,10 +71,19 @@ async function loadMonthly(btn) {
       // مش بنفلتر بـ start_date عشان ممكن يكون null
       sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,deposit,start_date,end_date,snapshot_type')
         .gte('end_date', monStart)
-        .lte('end_date', monNext2Start) // شامل أول يوم الشهر التالت عشان نمسك departure متأخر
+        .lte('end_date', monNext2Start), // شامل أول يوم الشهر التالت عشان نمسك departure متأخر
+      // خصومات نشطة خلال الشهر
+      sb.from('unit_discounts').select('unit_id,discount_amount')
+        .lte('start_date', monEnd)
+        .gte('end_date', monStart)
     ]);
     var allUnits     = unitsRes.data||[];
     var histUnits    = (histRes && histRes.data) ? histRes.data : [];
+    // discMap: unit_id → discount amount نشط في الشهر
+    var discMap = {};
+    (discRes && discRes.data ? discRes.data : []).forEach(function(d){
+      discMap[d.unit_id] = (discMap[d.unit_id]||0) + (d.discount_amount||0);
+    });
     // فلتر: المستأجر كان موجود في الشهر (start_date <= monEnd)
     histUnits = histUnits.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
     // رتّب من الأحدث للأقدم
@@ -290,6 +299,7 @@ async function loadMonthly(btn) {
     units.forEach(function(u){
       // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
       var _effectiveRent = (isNewForMonth(u.start_date) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      _effectiveRent = Math.max(0, _effectiveRent - (discMap[u.id]||0));
       totalRent     += _effectiveRent;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
       var _startYM2 = (u.start_date||'').slice(0,7);
@@ -320,6 +330,7 @@ async function loadMonthly(btn) {
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
       var _aptEffectiveRent = (isNewForMonth(u.start_date) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      _aptEffectiveRent = Math.max(0, _aptEffectiveRent - (discMap[u.id]||0));
       apts[apt].rent     += _aptEffectiveRent;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
       var _startYM3 = (u.start_date||'').slice(0,7);
@@ -422,23 +433,28 @@ async function loadMonthly(btn) {
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
           // لو مستأجر جديد وعنده first_month_rent — استخدمه بدل monthly_rent
+          // ثم طرح الخصم لو موجود
           var effectiveRent = (isNew && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+          effectiveRent = Math.max(0, effectiveRent - (discMap[u.id]||0));
           var showDep  = dep > 0; // show if deposit was received this month (regardless of isNew)
           var rem      = u._isVacantPaid ? 0 : Math.max(0, effectiveRent - rentPaid);
-          var fullPaid = u._isVacantPaid ? rentPaid>0 : (!isNew && rentPaid>=effectiveRent && effectiveRent>0) || (isNew && u.first_month_rent && rentPaid>=effectiveRent && effectiveRent>0);
-          var partPaid = !u._isVacantPaid && !fullPaid && rentPaid>0;
+          var overpaid = (!u._isVacantPaid && effectiveRent > 0 && rentPaid > effectiveRent) ? (rentPaid - effectiveRent) : 0;
+          var fullPaid = u._isVacantPaid ? rentPaid>0 : (rentPaid >= effectiveRent && effectiveRent > 0);
+          var partPaid = !u._isVacantPaid && !fullPaid && rentPaid > 0 && !isNew;
           // Status badge
-          var stBg = isNew?'var(--accent)':fullPaid?'var(--green)':partPaid?'var(--amber)':'var(--red)';
-          var stTx = isNew?(dep>0?'🆕':'🆕'):fullPaid?'✅':partPaid?'⚠️':'❌';
+          var stBg = isNew && !fullPaid ? 'var(--accent)' : fullPaid ? 'var(--green)' : partPaid ? 'var(--amber)' : 'var(--red)';
+          var stTx = isNew && !fullPaid ? '🆕' : fullPaid ? '✅' : partPaid ? '⚠️' : '❌';
           var stBadge = '<span style="display:inline-block;background:'+stBg+'33;color:'+stBg+';border:1px solid '+stBg+'55;border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:800">'+stTx+'</span>';
           // Paid cell — strong green or red bg
           var paidCell = rentPaid>0
             ? '<span style="background:var(--green)22;color:var(--green);border-radius:6px;padding:2px 7px;font-size:.78rem;font-weight:800">'+rentPaid.toLocaleString()+'</span>'
             : (u.monthly_rent&&!isNew?'<span style="background:var(--red)22;color:var(--red);border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:700">0</span>':'<span style="color:var(--muted)">—</span>');
-          // Remaining cell
-          var remCell = rem>0
+          // Remaining cell — لو فيه زيادة بتتعرض كـ "مقدم"
+          var remCell = rem > 0
             ? '<span style="background:var(--red)22;color:var(--red);border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:700">'+rem.toLocaleString()+'</span>'
-            : '<span style="color:var(--green);font-size:.75rem">—</span>';
+            : overpaid > 0
+              ? '<span style="background:var(--accent)22;color:var(--accent);border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:700">+'+overpaid.toLocaleString()+'↪️</span>'
+              : '<span style="color:var(--green);font-size:.75rem">—</span>';
           // Deposit cell
           var depCell = showDep
             ? '<span style="background:var(--accent)22;color:var(--accent);border-radius:6px;padding:2px 7px;font-size:.72rem;font-weight:700">'+dep.toLocaleString()+'</span>'
@@ -448,7 +464,15 @@ async function loadMonthly(btn) {
           return '<tr style="'+rowBg+'">'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.8rem;font-weight:700;color:var(--text)">'+u.room+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;font-weight:600;max-width:100px;overflow:hidden;text-overflow:ellipsis">'+(u.tenant_name||'—')+(u.tenant_name2?'<div style="font-size:.65rem;color:var(--amber)">+'+u.tenant_name2+'</div>':'')+'</td>'
-            +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--muted)">'+(isNew && u.first_month_rent ? '<span style="text-decoration:line-through;color:var(--muted);font-size:.65rem">'+(u.monthly_rent||0).toLocaleString()+'</span> <b style="color:var(--amber)">'+u.first_month_rent.toLocaleString()+'</b>' : (u.monthly_rent||0).toLocaleString())+'</td>'
+            +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--muted)">'+(function(){
+            var baseRent = (isNew && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+            var disc = discMap[u.id]||0;
+            var parts = [];
+            if(isNew && u.first_month_rent) parts.push('<span style="text-decoration:line-through;color:var(--muted);font-size:.65rem">'+(u.monthly_rent||0).toLocaleString()+'</span> <b style="color:var(--amber)">'+u.first_month_rent.toLocaleString()+'</b>');
+            else parts.push(String(u.monthly_rent||0 ));
+            if(disc>0) parts.push('<span style="color:var(--amber);font-size:.65rem">-'+disc+'</span> <b style="color:var(--green)">'+effectiveRent.toLocaleString()+'</b>');
+            return parts.join(' ');
+          })()+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22">'+depCell+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22">'+paidCell+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--green);font-weight:800">'+(dep>0?'<b>'+(rentPaid+dep).toLocaleString()+'</b>':'<span style="color:var(--muted)">—</span>')+'</td>'
