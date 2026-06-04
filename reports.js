@@ -52,7 +52,7 @@ async function loadMonthly(btn) {
     var _monDate2 = new Date(mon.slice(0,7)+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
     var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
     var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes] = await Promise.all([
-      sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
+      sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
       sb.from('expenses').select('amount,category,description,receipt_no,period_month').eq('period_month', monStart),
@@ -288,7 +288,9 @@ async function loadMonthly(btn) {
     // ── Grand Totals ──
     var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
-      totalRent     += u.monthly_rent||0;
+      // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
+      var _effectiveRent = (isNewForMonth(u.start_date) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      totalRent     += _effectiveRent;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
       var _startYM2 = (u.start_date||'').slice(0,7);
       var _depRows2;
@@ -317,7 +319,8 @@ async function loadMonthly(btn) {
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
-      apts[apt].rent     += u.monthly_rent||0;
+      var _aptEffectiveRent = (isNewForMonth(u.start_date) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      apts[apt].rent     += _aptEffectiveRent;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
       var _startYM3 = (u.start_date||'').slice(0,7);
       var _depRows3;
@@ -418,10 +421,12 @@ async function loadMonthly(btn) {
           var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
+          // لو مستأجر جديد وعنده first_month_rent — استخدمه بدل monthly_rent
+          var effectiveRent = (isNew && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
           var showDep  = dep > 0; // show if deposit was received this month (regardless of isNew)
-          var rem      = u._isVacantPaid ? 0 : Math.max(0,(u.monthly_rent||0)-rentPaid);
-          var fullPaid = u._isVacantPaid ? rentPaid>0 : (!isNew && rentPaid>=(u.monthly_rent||0)&&(u.monthly_rent||0)>0);
-          var partPaid = !u._isVacantPaid && !isNew && !fullPaid && rentPaid>0;
+          var rem      = u._isVacantPaid ? 0 : Math.max(0, effectiveRent - rentPaid);
+          var fullPaid = u._isVacantPaid ? rentPaid>0 : (!isNew && rentPaid>=effectiveRent && effectiveRent>0) || (isNew && u.first_month_rent && rentPaid>=effectiveRent && effectiveRent>0);
+          var partPaid = !u._isVacantPaid && !fullPaid && rentPaid>0;
           // Status badge
           var stBg = isNew?'var(--accent)':fullPaid?'var(--green)':partPaid?'var(--amber)':'var(--red)';
           var stTx = isNew?(dep>0?'🆕':'🆕'):fullPaid?'✅':partPaid?'⚠️':'❌';
@@ -443,7 +448,7 @@ async function loadMonthly(btn) {
           return '<tr style="'+rowBg+'">'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.8rem;font-weight:700;color:var(--text)">'+u.room+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;font-weight:600;max-width:100px;overflow:hidden;text-overflow:ellipsis">'+(u.tenant_name||'—')+(u.tenant_name2?'<div style="font-size:.65rem;color:var(--amber)">+'+u.tenant_name2+'</div>':'')+'</td>'
-            +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--muted)">'+(u.monthly_rent||0).toLocaleString()+'</td>'
+            +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--muted)">'+(isNew && u.first_month_rent ? '<span style="text-decoration:line-through;color:var(--muted);font-size:.65rem">'+(u.monthly_rent||0).toLocaleString()+'</span> <b style="color:var(--amber)">'+u.first_month_rent.toLocaleString()+'</b>' : (u.monthly_rent||0).toLocaleString())+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22">'+depCell+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22">'+paidCell+'</td>'
             +'<td style="padding:7px 9px;border-bottom:1px solid var(--border)22;font-size:.75rem;color:var(--green);font-weight:800">'+(dep>0?'<b>'+(rentPaid+dep).toLocaleString()+'</b>':'<span style="color:var(--muted)">—</span>')+'</td>'

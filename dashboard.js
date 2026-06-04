@@ -67,7 +67,7 @@ async function loadSmartDash(ym) {
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
       sb.from('deposits').select('amount').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd).eq('status','held'),
       sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date',monStart).lte('refund_date',monEnd),
-      sb.from('units').select('id,monthly_rent,is_vacant,unit_status,start_date,tenant_name'),
+      sb.from('units').select('id,monthly_rent,first_month_rent,is_vacant,unit_status,start_date,tenant_name'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
       sb.from('rent_payments').select('amount').like('payment_month', prevYM+'%'),
       sb.from('moves').select('unit_id').eq('type','depart').eq('status','pending').lte('move_date',monEnd),
@@ -145,7 +145,9 @@ async function loadSmartDash(ym) {
 
     // ── EXPECTED ──
     var expected = allInMonth.reduce(function(s,u){
-      return s + Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
+      // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
+      var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      return s + Math.max(0, baseRent - (discMap[u.id]||0));
     }, 0);
 
     // ── CASH totals ──
@@ -174,7 +176,8 @@ async function loadSmartDash(ym) {
     var paidCount=0, partCount=0, unpaidCount=0;
     allInMonth.forEach(function(u){
       var got  = accrualPaidMap[u.id]||0;
-      var rent = Math.max(0,(u.monthly_rent||0)-(discMap[u.id]||0));
+      var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      var rent = Math.max(0, baseRent - (discMap[u.id]||0));
       if(rent === 0) return;
       if(got >= rent) paidCount++;
       else if(got > 0) partCount++;

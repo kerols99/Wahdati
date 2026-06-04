@@ -123,7 +123,7 @@ async function loadUnits() {
       ).join('');
     }
     // Select only fields needed for unit cards
-  var { data } = await sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,phone,phone2,rent1,rent2,start_date,is_vacant,unit_status,deposit,persons_count,language,notes').order('apartment',{ascending:true});
+  var { data } = await sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,phone,phone2,rent1,rent2,start_date,is_vacant,unit_status,deposit,persons_count,language,notes').order('apartment',{ascending:true});
     if(!data) data=[];
     data.sort((a,b)=>{
       var aptA=parseInt(a.apartment)||0, aptB=parseInt(b.apartment)||0;
@@ -706,6 +706,7 @@ async function editUnit(unitId) {
     var buildEl = document.getElementById('u-building');
     if(buildEl) buildEl.value = unit.building_name||'';
     document.getElementById('u-notes').value = unit.notes||'';
+    var fmrEl = document.getElementById('u-fmr'); if(fmrEl) fmrEl.value = unit.first_month_rent||'';
     var vac=document.getElementById('u-vacant'); if(vac){ vac.checked = !!unit.is_vacant; toggleVacantMode(vac); }
     var pr=document.getElementById('total-rent-preview');
     if(pr) pr.textContent=(unit.monthly_rent||0)+' AED';
@@ -761,6 +762,7 @@ async function saveUnit(btn) {
       language:      isVacant ? null : document.getElementById('u-lang').value,
       window_status: isVacant ? null : (document.getElementById('u-win').value.trim()||null),
       notes:         document.getElementById('u-notes').value.trim()||null,
+      first_month_rent: isVacant ? null : (Number(document.getElementById('u-fmr').value||0) || null),
       is_vacant:     isVacant,
       unit_status:   isVacant ? 'available' : (document.getElementById('u-status')?(document.getElementById('u-status').value||'occupied'):'occupied'),
       building_name: (document.getElementById('u-building')&&document.getElementById('u-building').value.trim())||null,
@@ -817,7 +819,7 @@ async function saveUnit(btn) {
 }
 
 function clearUnit() {
-  ['u-apt','u-room','u-rent','u-rent1','u-rent2','u-dep','u-start',
+  ['u-apt','u-room','u-rent','u-rent1','u-rent2','u-dep','u-start','u-fmr',
    'u-name','u-phone','u-name2','u-phone2','u-notes','u-win','u-building'].forEach(id=>{
     var el=document.getElementById(id); if(el) el.value='';
   });
@@ -835,7 +837,7 @@ function toggleVacantMode(source) {
   var isVacant = typeof source === 'boolean' ? source : !!chk.checked;
   chk.checked = isVacant;
 
-  var disableIds = ['u-name','u-phone','u-name2','u-phone2','u-dep','u-start','u-cnt','u-lang','u-win'];
+  var disableIds = ['u-name','u-phone','u-name2','u-phone2','u-dep','u-start','u-fmr','u-cnt','u-lang','u-win'];
   disableIds.forEach(function(id){
     var el = document.getElementById(id);
     if(!el) return;
