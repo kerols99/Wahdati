@@ -768,9 +768,33 @@ async function saveUnit(btn) {
       building_name: (document.getElementById('u-building')&&document.getElementById('u-building').value.trim())||null,
     };
 
-    var { data: existing } = await sb.from('units').select('id').eq('apartment',apt).eq('room',room).maybeSingle();
+    var { data: existing } = await sb.from('units').select('id,monthly_rent,rent1,rent2,tenant_name,tenant_name2,phone,phone2,start_date,deposit,persons_count').eq('apartment',apt).eq('room',room).maybeSingle();
 
     if(existing) {
+      // لو الإيجار اتغيّر — احفظ snapshot في unit_history قبل التعديل
+      var oldRent = existing.monthly_rent||0;
+      var newRent = payload.monthly_rent||0;
+      if(oldRent > 0 && oldRent !== newRent && existing.tenant_name) {
+        var today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+        await sb.from('unit_history').insert({
+          unit_id:      existing.id,
+          apartment:    parseInt(apt)||apt,
+          room:         parseInt(room)||room,
+          tenant_name:  existing.tenant_name,
+          tenant_name2: existing.tenant_name2||null,
+          phone:        existing.phone||null,
+          phone2:       existing.phone2||null,
+          monthly_rent: oldRent,
+          rent1:        existing.rent1||null,
+          rent2:        existing.rent2||null,
+          deposit:      existing.deposit||0,
+          persons_count:existing.persons_count||1,
+          start_date:   existing.start_date||null,
+          end_date:     today,
+          snapshot_type:'rent_change',
+          recorded_by:  (window.MY_USER_ID||null)
+        });
+      }
       var { error } = await sb.from('units').update(payload).eq('id',existing.id);
       if(error) throw error;
     } else {

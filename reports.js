@@ -51,7 +51,7 @@ async function loadMonthly(btn) {
     // أول يوم في الشهر التالت — عشان نشمل departure اللي end_date = أول يوم الشهر التاني
     var _monDate2 = new Date(mon.slice(0,7)+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
     var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
-    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes, discRes] = await Promise.all([
+    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes, discRes, rentHistRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
@@ -75,7 +75,12 @@ async function loadMonthly(btn) {
       // خصومات نشطة خلال الشهر
       sb.from('unit_discounts').select('unit_id,discount_amount')
         .lte('start_date', monEnd)
-        .gte('end_date', monStart)
+        .gte('end_date', monStart),
+      // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار
+      // بنجيب monthly_rent اللي كان سارياً في الشهر المختار
+      sb.from('unit_history').select('unit_id,monthly_rent,end_date')
+        .gt('end_date', monEnd)
+        .order('end_date', {ascending: true})
     ]);
     var allUnits     = unitsRes.data||[];
     var histUnits    = (histRes && histRes.data) ? histRes.data : [];
@@ -84,6 +89,19 @@ async function loadMonthly(btn) {
     (discRes && discRes.data ? discRes.data : []).forEach(function(d){
       discMap[d.unit_id] = (discMap[d.unit_id]||0) + (d.discount_amount||0);
     });
+    // historicRentMap: لو بنشوف تقرير تاريخي وإيجار الوحدة اتغير بعد الشهر ده
+    // بنجيب أقدم سجل في unit_history بعد monEnd — ده بيمثّل الإيجار اللي تغيّر من بعده
+    var historicRentMap = {};
+    var _monYM = (mon||'').slice(0,7);
+    var _nowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+    if(_monYM < _nowYM) {
+      (rentHistRes && rentHistRes.data ? rentHistRes.data : []).forEach(function(h){
+        // أول سجل لكل وحدة (الأقدم بعد monEnd) = الإيجار اللي كان قبل التغيير
+        if(!historicRentMap[h.unit_id]) {
+          historicRentMap[h.unit_id] = h.monthly_rent||0;
+        }
+      });
+    }
     // فلتر: المستأجر كان موجود في الشهر (start_date <= monEnd)
     histUnits = histUnits.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
     // رتّب من الأحدث للأقدم
@@ -136,6 +154,7 @@ async function loadMonthly(btn) {
       // لو حصل في شهر تاني — المستأجر كان موجود في الشهر المختار فيظهر
       if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck) return;
       if(h.snapshot_type === 'internal_transfer_in') return;
+      if(h.snapshot_type === 'rent_change') return; // ده بس للـ historicRentMap، مش صف منفصل
 
       if(!existingIds.has(h.unit_id)) {
         // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق من unit_history
@@ -211,6 +230,16 @@ async function loadMonthly(btn) {
       }
       return u;
     });
+    // لو تقرير تاريخي — استبدل monthly_rent بالقيمة اللي كانت سارية في الشهر ده
+    if(Object.keys(historicRentMap).length > 0) {
+      units = units.map(function(u){
+        var histRent = historicRentMap[u.id] || historicRentMap[String(u.id).split('_f')[0]];
+        if(histRent && !u._isFormerTenant) {
+          return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
+        }
+        return u;
+      });
+    }
     var pays         = paysRes.data||[];
     var exps         = expsRes.data||[];
     var owns         = ownsRes.data||[];
