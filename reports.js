@@ -232,23 +232,13 @@ async function loadMonthly(btn) {
       return u;
     });
     // لو تقرير تاريخي — استبدل monthly_rent بالقيمة اللي كانت سارية في الشهر ده
-    console.log('=== HISTORIC RENT DEBUG ===');
-    console.log('monEnd:', monEnd);
-    console.log('rentHistRes raw:', rentHistRes && rentHistRes.data);
-    console.log('historicRentMap:', historicRentMap);
     if(Object.keys(historicRentMap).length > 0) {
       units = units.map(function(u){
         var histRent = historicRentMap[u.id] || historicRentMap[String(u.id).split('_f')[0]];
-        console.log('unit', u.apartment+'/'+u.room, u.tenant_name, '| current rent:', u.monthly_rent, '| histRent:', histRent, '| _isFormerTenant:', u._isFormerTenant);
         if(histRent && !u._isFormerTenant) {
           return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
         }
         return u;
-      });
-    } else {
-      console.log('historicRentMap فاضي — مش بيطبّق أي تعديل');
-      units.forEach(function(u){
-        console.log('unit', u.apartment+'/'+u.room, u.tenant_name, '| monthly_rent:', u.monthly_rent);
       });
     }
     var pays         = paysRes.data||[];
@@ -338,7 +328,7 @@ async function loadMonthly(btn) {
     var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
       // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
-      var _effectiveRent = (isNewForMonth(u.start_date) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      var _effectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
       _effectiveRent = Math.max(0, _effectiveRent - (discMap[u.id]||0));
       totalRent     += _effectiveRent;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
@@ -369,7 +359,7 @@ async function loadMonthly(btn) {
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
-      var _aptEffectiveRent = (isNewForMonth(u.start_date) && (u.first_month_rent || u._isFormerTenant && u.first_month_rent)) ? u.first_month_rent : (u.monthly_rent||0);
+      var _aptEffectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
       _aptEffectiveRent = Math.max(0, _aptEffectiveRent - (discMap[u.id]||0));
       apts[apt].rent     += _aptEffectiveRent;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
@@ -472,9 +462,8 @@ async function loadMonthly(btn) {
           var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
-          // لو مستأجر جديد أو سابق وعنده first_month_rent — استخدمه بدل monthly_rent
-          // ثم طرح الخصم لو موجود
-          var effectiveRent = ((isNew || u._isFormerTenant) && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+          // لو عنده first_month_rent (سواء مستأجر حالي أو سابق) — استخدمه
+          var effectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
           effectiveRent = Math.max(0, effectiveRent - (discMap[u.id]||0));
           var showDep  = dep > 0; // show if deposit was received this month (regardless of isNew)
           var rem      = u._isVacantPaid ? 0 : Math.max(0, effectiveRent - rentPaid);
