@@ -74,7 +74,7 @@ async function loadSmartDash(ym) {
       sb.from('expenses').select('amount').eq('period_month', ym+'-01'),
       sb.from('owner_payments').select('amount').eq('period_month', ym+'-01'),
       sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',_today).gte('end_date',monStart),
-      sb.from('unit_history').select('unit_id,monthly_rent,start_date,end_date,snapshot_type,tenant_name')
+      sb.from('unit_history').select('unit_id,monthly_rent,first_month_rent,start_date,end_date,snapshot_type,tenant_name')
         .gte('end_date', monStart).lte('end_date', nextMonthEnd)
     ]);
 
@@ -128,18 +128,22 @@ async function loadSmartDash(ym) {
 
     // كل المستأجرين في الشهر
     var allInMonth = currentInMonth.concat(histUnitsForMonth.map(function(h){
-      return { id: h.unit_id, monthly_rent: h.monthly_rent||0, start_date: h.start_date, _isFormer: true };
+      return { id: h.unit_id, monthly_rent: h.monthly_rent||0, first_month_rent: h.first_month_rent||null, start_date: h.start_date, _isFormer: true };
     }));
 
     // ── Unit counts للشهر ──
-    var allUnitsCount = allUnits.length;
+    var allUnitsCount   = allUnits.length;
     var occupiedInMonth = allInMonth.length;
-    var vacantInMonth   = allUnitsCount - occupiedInMonth;
+    // الشاغرة = كل الوحدات ناقص المشغولة في الشهر ناقص reserved وmaintenance
+    var reservedCount    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; }).length;
+    var maintenanceCount = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; }).length;
+    var vacantInMonth   = allUnitsCount - occupiedInMonth - reservedCount - maintenanceCount;
 
     // مشغولة دلوقتي (للـ badges الحالية)
     var departSet   = new Set((departs||[]).map(function(d){ return d.unit_id; }));
     var leaving     = currentInMonth.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
-    var newThisMonth= currentInMonth.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
+    // الجدد = من currentInMonth + من histUnitsForMonth اللي دخلوا في نفس الشهر
+    var newThisMonth= allInMonth.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
     var reserved    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; });
     var maintenance = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; });
 
