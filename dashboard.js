@@ -92,65 +92,82 @@ async function loadSmartDash(ym) {
     var discMap    = {};
     (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
 
-    // ── بناء snapshot للشهر المختار ──
-    // المستأجرين اللي كانوا موجودين في الشهر
-    // 1. من units الحالية اللي دخلوا في الشهر أو قبله
-    var currentInMonth = allUnits.filter(function(u){
+    // ── بناء snapshot للشهر المختار — نفس منطق التقرير الشهري ──
+    var monYMcheck = ym;
+
+    // 1. ابدأ بالمستأجرين الحاليين اللي دخلوا في الشهر أو قبله
+    var units = allUnits.filter(function(u){
       if(!isDashboardOccupied(u)) return false;
-      var s = (u.start_date||'').slice(0,7);
-      return !s || s <= ym;
+      var startYM = (u.start_date||'').slice(0,7);
+      return !startYM || startYM <= monYMcheck;
     });
 
-    // 2. من unit_history — مستأجرين غادروا أو انتقلوا
-    var addedKeys = new Set();
-    var histUnitsForMonth = [];
-    hist.forEach(function(h){
-      var endYM  = (h.end_date||'').slice(0,7);
-      var endDay = (h.end_date||'').slice(8,10);
-      // internal_transfer_in مش بيُحسب (المستأجر محسوب في الوحدة الجديدة)
+    var existingIds = new Set(units.map(function(u){ return u.id; }));
+    var currentStartMap = {};
+    units.forEach(function(u){ currentStartMap[u.id] = (u.start_date||'').slice(0,7); });
+
+    // 2. من unit_history — نفس فلترة التقرير
+    var histForDash = hist.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
+    histForDash.sort(function(a,b){ return (b.end_date||'') > (a.end_date||'') ? 1 : -1; });
+
+    var addedHistKeys = new Set();
+    histForDash.forEach(function(h){
+      var uniqueKey = String(h.unit_id)+'_'+String(h.end_date||'');
+      if(addedHistKeys.has(uniqueKey)) return;
+
+      var endDateYM  = (h.end_date||'').slice(0,7);
+      var startDateYM = (h.start_date||'').slice(0,7);
+
+      if(h.end_date && endDateYM < monYMcheck) return;
+      if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
+      if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck) return;
       if(h.snapshot_type === 'internal_transfer_in') return;
-      // rent_change مش صف مستأجر
       if(h.snapshot_type === 'rent_change') return;
-      // غادر في أول يوم الشهر = غادر آخر الشهر السابق
-      // غادر أول يوم من نفس الشهر = غادر آخر الشهر السابق → يتشال
-      // لكن لو غادر أول يوم من الشهر التالي → ده غادر في آخر الشهر الحالي → يتضاف
-      if(endYM === ym && endDay === '01') return;
-      // internal_transfer_out في نفس الشهر — بس لو المستأجر موجود في وحدة تانية حالياً
-      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) {
-        var inNewUnit = currentInMonth.find(function(u){
-          return u.tenant_name === h.tenant_name && u.id !== h.unit_id;
-        });
-        if(inNewUnit) return; // محسوب في الوحدة الجديدة
-        // لو مش موجود في وحدة تانية — محسوب هنا
-      }
-      // لو الوحدة فيها مستأجر حالي دخل قبل أو في الشهر ده — محسوب بالفعل
-      var cu = currentInMonth.find(function(u){ return u.id === h.unit_id; });
-      if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
-      var key = h.unit_id+'_'+(h.end_date||'');
-      if(h.unit_id === 37) console.log('DEBUG unit 37:', h.tenant_name, h.end_date, h.snapshot_type, '| key already added:', addedKeys.has(key));
-      if(!addedKeys.has(key)){
-        addedKeys.add(key);
-        histUnitsForMonth.push(h);
+
+      var formerUnit = {
+        id: h.unit_id, monthly_rent: h.monthly_rent||0,
+        first_month_rent: h.first_month_rent||null,
+        start_date: h.start_date||null, tenant_name: h.tenant_name||null,
+        _isFormerTenant: true
+      };
+
+      if(!existingIds.has(h.unit_id)) {
+        addedHistKeys.add(uniqueKey);
+        units.push(formerUnit);
+        existingIds.add(h.unit_id);
+        currentStartMap[h.unit_id] = startDateYM;
+      } else {
+        var existing = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+        if(existing && (!existing.monthly_rent || existing.monthly_rent === 0)) {
+          var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+          if(idx > -1){ addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
+        } else {
+          var currentStartYM = currentStartMap[h.unit_id] || '';
+          if(currentStartYM > monYMcheck) {
+            var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+            if(idx > -1){ addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
+          } else if(currentStartYM === monYMcheck) {
+            var currentUnit = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+            var samePerson = currentUnit && currentUnit.tenant_name === h.tenant_name;
+            if(!samePerson){ addedHistKeys.add(uniqueKey); units.push(formerUnit); }
+          }
+        }
       }
     });
 
     // كل المستأجرين في الشهر
-    var allInMonth = currentInMonth.concat(histUnitsForMonth.map(function(h){
-      return { id: h.unit_id, monthly_rent: h.monthly_rent||0, first_month_rent: h.first_month_rent||null, start_date: h.start_date, _isFormer: true };
-    }));
+    var allInMonth = units;
 
     // ── Unit counts للشهر ──
     var allUnitsCount   = allUnits.length;
     var occupiedInMonth = allInMonth.length;
-    // الشاغرة = كل الوحدات ناقص المشغولة في الشهر ناقص reserved وmaintenance
     var reservedCount    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; }).length;
     var maintenanceCount = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; }).length;
     var vacantInMonth   = allUnitsCount - occupiedInMonth - reservedCount - maintenanceCount;
 
-    // مشغولة دلوقتي (للـ badges الحالية)
     var departSet   = new Set((departs||[]).map(function(d){ return d.unit_id; }));
-    var leaving     = currentInMonth.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
-    // الجدد = من currentInMonth + من histUnitsForMonth اللي دخلوا في نفس الشهر
+    var currentOccupied = allUnits.filter(function(u){ return isDashboardOccupied(u) && (u.start_date||'').slice(0,7) <= ym; });
+    var leaving     = currentOccupied.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
     var newThisMonth= allInMonth.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
     var reserved    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; });
     var maintenance = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; });
