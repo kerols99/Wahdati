@@ -73,7 +73,7 @@ async function loadSmartDash(ym) {
       sb.from('moves').select('unit_id').eq('type','depart').eq('status','pending').lte('move_date',monEnd),
       sb.from('expenses').select('amount').eq('period_month', ym+'-01'),
       sb.from('owner_payments').select('amount').eq('period_month', ym+'-01'),
-      sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',_today).gte('end_date',monStart),
+      sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',monEnd).gte('end_date',monStart),
       sb.from('unit_history').select('unit_id,monthly_rent,first_month_rent,start_date,end_date,snapshot_type,tenant_name')
         .gte('end_date', monStart).lte('end_date', nextMonthEnd)
     ]);
