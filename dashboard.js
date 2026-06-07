@@ -77,7 +77,7 @@ async function loadSmartDash(ym) {
       sb.from('unit_history').select('unit_id,monthly_rent,first_month_rent,start_date,end_date,snapshot_type,tenant_name')
         .gte('end_date', monStart).lte('end_date', monNext2Start),
       // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار — لتصحيح الإيجار التاريخي
-      sb.from('unit_history').select('unit_id,monthly_rent,end_date')
+      sb.from('unit_history').select('unit_id,monthly_rent,end_date,snapshot_type')
         .gt('end_date', monEnd)
         .order('end_date', {ascending: true})
     ]);
@@ -102,8 +102,7 @@ async function loadSmartDash(ym) {
     var _dashNowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
     if(_dashMonYM < _dashNowYM) {
       (rentHistRes.data||[]).forEach(function(h){
-        // أول سجل لكل وحدة (الأقدم بعد monEnd) = الإيجار الصحيح للشهر المختار
-        if(!historicRentMap[h.unit_id]) {
+        if(h.snapshot_type === 'rent_change' && !historicRentMap[h.unit_id]) {
           historicRentMap[h.unit_id] = h.monthly_rent||0;
         }
       });
