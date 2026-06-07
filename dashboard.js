@@ -96,17 +96,10 @@ async function loadSmartDash(ym) {
     var discMap    = {};
     (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
 
-    // historicRentMap: تصحيح الإيجار لو الشهر المختار تاريخي وإيجار الوحدة اتغير بعده
+    // historicRentMap: يتبنى بعد بناء units عشان نتأكد المستأجر كان في الشهر فعلاً
     var historicRentMap = {};
     var _dashMonYM = ym;
     var _dashNowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
-    if(_dashMonYM < _dashNowYM) {
-      (rentHistRes.data||[]).forEach(function(h){
-        if(h.snapshot_type === 'rent_change' && !historicRentMap[h.unit_id]) {
-          historicRentMap[h.unit_id] = h.monthly_rent||0;
-        }
-      });
-    }
 
     // ── بناء snapshot للشهر المختار — نفس منطق التقرير الشهري ──
     var monYMcheck = ym;
@@ -170,6 +163,18 @@ async function loadSmartDash(ym) {
         }
       }
     });
+
+    // بناء historicRentMap بعد units — بس للوحدات اللي كانت فعلاً في الشهر
+    var _unitIdsInMonth = new Set(units.map(function(u){ return u.id; }));
+    if(_dashMonYM < _dashNowYM) {
+      (rentHistRes.data||[]).forEach(function(h){
+        if(h.snapshot_type === 'rent_change'
+           && _unitIdsInMonth.has(h.unit_id)
+           && !historicRentMap[h.unit_id]) {
+          historicRentMap[h.unit_id] = h.monthly_rent||0;
+        }
+      });
+    }
 
     // كل المستأجرين في الشهر
     var allInMonth = units;
