@@ -288,6 +288,9 @@ async function loadMonthly(btn) {
       });
     });
 
+    // حفظ بيانات الشهر عشان exportPDF يستخدمها بدون ما يعمل fetch تاني
+    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[] };
+
     // depRawMap: all deposit rows per unit_id AND per apartment-room
     var depRawMap = {};
     var depRawMapByRoom = {};
@@ -1051,20 +1054,16 @@ async function exportPDF(type, mon) {
   var outEl = document.getElementById('rMonOut');
   if(!outEl) return;
   try {
-    // Parallel fetch for PDF
-    var [unitsRes2, paysRes2, expsRes2, ownsRes2, depsRes2] = await Promise.all([
-      sb.from('units').select('id,apartment,room,monthly_rent,tenant_name,tenant_name2,start_date,deposit').eq('is_vacant',false).order('apartment'),
-      // ACCRUAL PDF: payment_month
-      sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,tenant_num').like('payment_month', mon + '%'),
-      sb.from('expenses').select('amount,category,period_month').eq('period_month', (mon||'').slice(0,7)+'-01'),
-      sb.from('owner_payments').select('amount,period_month').eq('period_month', (mon||'').slice(0,7)+'-01'),
-      sb.from('deposits').select('unit_id,amount,deposit_received_date,status')
-    ]);
-    var units = unitsRes2.data||[];
-    var pays  = paysRes2.data||[];
-    var exps  = expsRes2.data||[];
-    var owns  = ownsRes2.data||[];
-    var deps  = depsRes2.data||[];
+    // استخدم بيانات loadMonthly المحفوظة — نفس الـ snapshot الصح للشهر
+    if(!window._pdfData || window._pdfData.mon.slice(0,7) !== mon.slice(0,7)) {
+      toast(LANG==='ar'?'افتح التقرير أولاً ثم اطبع':'Open the report first, then print','err');
+      return;
+    }
+    var units = window._pdfData.units;
+    var pays  = window._pdfData.pays;
+    var exps  = window._pdfData.exps;
+    var owns  = window._pdfData.owns;
+    var deps  = window._pdfData.deps;
 
     var monYM = mon.slice(0,7);
 
