@@ -112,6 +112,8 @@ async function loadSmartDash(ym) {
       // rent_change مش صف مستأجر
       if(h.snapshot_type === 'rent_change') return;
       // غادر في أول يوم الشهر = غادر آخر الشهر السابق
+      // غادر أول يوم من نفس الشهر = غادر آخر الشهر السابق → يتشال
+      // لكن لو غادر أول يوم من الشهر التالي → ده غادر في آخر الشهر الحالي → يتضاف
       if(endYM === ym && endDay === '01') return;
       // internal_transfer_out في نفس الشهر — بس لو المستأجر موجود في وحدة تانية حالياً
       if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) {
@@ -125,6 +127,7 @@ async function loadSmartDash(ym) {
       var cu = currentInMonth.find(function(u){ return u.id === h.unit_id; });
       if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
       var key = h.unit_id+'_'+(h.end_date||'');
+      if(h.unit_id === 37) console.log('DEBUG unit 37:', h.tenant_name, h.end_date, h.snapshot_type, '| key already added:', addedKeys.has(key));
       if(!addedKeys.has(key)){
         addedKeys.add(key);
         histUnitsForMonth.push(h);
