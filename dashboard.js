@@ -51,9 +51,9 @@ async function loadSmartDash(ym) {
     var prevYM = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
     var monStart = ym+'-01';
     var monEnd = monthEnd(ym);
-    var nextMonthEnd = (function(){
-      var d=new Date(ym+'-01'); d.setMonth(d.getMonth()+2); d.setDate(0);
-      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    var monNext2Start = (function(){
+      var d=new Date(ym+'-01'); d.setMonth(d.getMonth()+2);
+      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
     })();
     var _today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
@@ -61,7 +61,7 @@ async function loadSmartDash(ym) {
     var [
       cashPaysRes, accrualPaysRes, depsRes, refDepsRes,
       unitsRes, prevCashRes, prevAccrualRes,
-      departRes, expRes, ownerRes, discRes, histRes
+      departRes, expRes, ownerRes, discRes, histRes, rentHistRes
     ] = await Promise.all([
       sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
@@ -75,7 +75,11 @@ async function loadSmartDash(ym) {
       sb.from('owner_payments').select('amount').eq('period_month', ym+'-01'),
       sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',monEnd).gte('end_date',monStart),
       sb.from('unit_history').select('unit_id,monthly_rent,first_month_rent,start_date,end_date,snapshot_type,tenant_name')
-        .gte('end_date', monStart).lte('end_date', nextMonthEnd)
+        .gte('end_date', monStart).lte('end_date', monNext2Start),
+      // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار — لتصحيح الإيجار التاريخي
+      sb.from('unit_history').select('unit_id,monthly_rent,end_date')
+        .gt('end_date', monEnd)
+        .order('end_date', {ascending: true})
     ]);
 
     var allUnits   = unitsRes.data||[];
@@ -91,6 +95,19 @@ async function loadSmartDash(ym) {
     var owners     = ownerRes.data||[];
     var discMap    = {};
     (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
+
+    // historicRentMap: تصحيح الإيجار لو الشهر المختار تاريخي وإيجار الوحدة اتغير بعده
+    var historicRentMap = {};
+    var _dashMonYM = ym;
+    var _dashNowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+    if(_dashMonYM < _dashNowYM) {
+      (rentHistRes.data||[]).forEach(function(h){
+        // أول سجل لكل وحدة (الأقدم بعد monEnd) = الإيجار الصحيح للشهر المختار
+        if(!historicRentMap[h.unit_id]) {
+          historicRentMap[h.unit_id] = h.monthly_rent||0;
+        }
+      });
+    }
 
     // ── بناء snapshot للشهر المختار — نفس منطق التقرير الشهري ──
     var monYMcheck = ym;
@@ -176,6 +193,8 @@ async function loadSmartDash(ym) {
     var expected = allInMonth.reduce(function(s,u){
       // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
       var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      // لو شهر تاريخي وإيجار الوحدة اتغير بعده — استخدم الإيجار القديم
+      if(historicRentMap[u.id]) baseRent = historicRentMap[u.id];
       return s + Math.max(0, baseRent - (discMap[u.id]||0));
     }, 0);
 
