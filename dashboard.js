@@ -105,20 +105,25 @@ async function loadSmartDash(ym) {
     var addedKeys = new Set();
     var histUnitsForMonth = [];
     hist.forEach(function(h){
-      var endYM = (h.end_date||'').slice(0,7);
-      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) return;
+      var endYM  = (h.end_date||'').slice(0,7);
+      var endDay = (h.end_date||'').slice(8,10);
+      // internal_transfer_in مش بيُحسب (المستأجر محسوب في الوحدة الجديدة)
       if(h.snapshot_type === 'internal_transfer_in') return;
-      if(endYM === ym && (h.end_date||'').slice(8,10) === '01') return;
-      // لو الوحدة فيها مستأجر حالي دخل في الشهر أو قبله — محسوب بالفعل
-      var cu = currentInMonth.find(function(u){ return u.id===h.unit_id; });
-      if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
-      // لو نقل داخلي — تأكد إن المستأجر مش محسوب في وحدته الجديدة
-      if(h.snapshot_type === 'internal_transfer_out' && h.tenant_name) {
+      // rent_change مش صف مستأجر
+      if(h.snapshot_type === 'rent_change') return;
+      // غادر في أول يوم الشهر = غادر آخر الشهر السابق
+      if(endYM === ym && endDay === '01') return;
+      // internal_transfer_out في نفس الشهر — بس لو المستأجر موجود في وحدة تانية حالياً
+      if(h.snapshot_type === 'internal_transfer_out' && endYM === ym) {
         var inNewUnit = currentInMonth.find(function(u){
           return u.tenant_name === h.tenant_name && u.id !== h.unit_id;
         });
-        if(inNewUnit) return;
+        if(inNewUnit) return; // محسوب في الوحدة الجديدة
+        // لو مش موجود في وحدة تانية — محسوب هنا
       }
+      // لو الوحدة فيها مستأجر حالي دخل قبل أو في الشهر ده — محسوب بالفعل
+      var cu = currentInMonth.find(function(u){ return u.id === h.unit_id; });
+      if(cu && (cu.start_date||'').slice(0,7) <= ym) return;
       var key = h.unit_id+'_'+(h.end_date||'');
       if(!addedKeys.has(key)){
         addedKeys.add(key);
