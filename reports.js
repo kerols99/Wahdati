@@ -289,7 +289,7 @@ async function loadMonthly(btn) {
     });
 
     // حفظ بيانات الشهر عشان exportPDF يستخدمها بدون ما يعمل fetch تاني
-    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[] };
+    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap };
 
     // depRawMap: all deposit rows per unit_id AND per apartment-room
     var depRawMap = {};
@@ -1088,9 +1088,18 @@ async function exportPDF(type, mon) {
       if(amt>0) depMap[u.id] = amt;
     });
 
+    // discMap للـ PDF — من _pdfData اللي loadMonthly حسبه
+    var _pdfDiscMap = {};
+    if(window._pdfData && window._pdfData.discMap) {
+      _pdfDiscMap = window._pdfData.discMap;
+    }
+
     var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
-      totalRent     += u.monthly_rent||0;
+      // نفس منطق loadMonthly: first_month_rent + discount + historicRent
+      var baseRent = (u.start_date && u.start_date.slice(0,7)===monYM && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      var disc = _pdfDiscMap[u.id]||0;
+      totalRent += Math.max(0, baseRent - disc);
       var _pk2=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk2;
       totalDeps     += depMap[u.id]||0;
     });
@@ -1104,7 +1113,8 @@ async function exportPDF(type, mon) {
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,deps:0};
       apts[apt].units.push(u);
-      apts[apt].rent     += u.monthly_rent||0;
+      var _baseR = (u.start_date && u.start_date.slice(0,7)===monYM && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
+      apts[apt].rent     += Math.max(0, _baseR - (_pdfDiscMap[u.id]||0));
       var _pk4=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk4;
       apts[apt].deps     += depMap[u.id]||0;
     });
