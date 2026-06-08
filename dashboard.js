@@ -164,8 +164,11 @@ async function loadSmartDash(ym) {
       }
     });
 
-    // بناء historicRentMap بعد units — بس للوحدات اللي كانت فعلاً في الشهر
-    var _unitIdsInMonth = new Set(units.map(function(u){ return u.id; }));
+    // كل المستأجرين في الشهر
+    var allInMonth = units;
+
+    // بناء historicRentMap بعد اكتمال allInMonth (شامل unit_history)
+    var _unitIdsInMonth = new Set(allInMonth.map(function(u){ return u.id; }));
     if(_dashMonYM < _dashNowYM) {
       (rentHistRes.data||[]).forEach(function(h){
         if(h.snapshot_type === 'rent_change'
@@ -175,9 +178,6 @@ async function loadSmartDash(ym) {
         }
       });
     }
-
-    // كل المستأجرين في الشهر
-    var allInMonth = units;
 
     // ── Unit counts للشهر ──
     var allUnitsCount   = allUnits.length;
