@@ -1189,7 +1189,7 @@ async function exportPDF(type, mon) {
 
     document.getElementById('pdf-content').innerHTML =
       '<div class="hd">'
-    var pdfPct = totalRent>0?Math.round(totalColl/totalRent*100):0;
+    var pdfPct = totalRent>0?Math.round(totalRentColl/totalRent*100):0;
     document.getElementById('pdf-content').innerHTML =
       '<div class="hd">'
       +'<div>'
