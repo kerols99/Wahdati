@@ -65,7 +65,7 @@ async function loadSmartDash(ym) {
     ] = await Promise.all([
       sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
-      sb.from('deposits').select('amount').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd).eq('status','held'),
+      sb.from('deposits').select('amount').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd),
       sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date',monStart).lte('refund_date',monEnd),
       sb.from('units').select('id,monthly_rent,first_month_rent,is_vacant,unit_status,start_date,tenant_name'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
