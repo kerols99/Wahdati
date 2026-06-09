@@ -1703,25 +1703,41 @@ async function loadDiscReport(btn) {
   try {
     var today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
-    var { data: discounts, error } = await sb.from('unit_discounts')
+    // فلتر الشهر — لو اختار المستخدم شهر معين
+    var monEl = document.getElementById('rdisc-month');
+    var filterMon = monEl ? (monEl.value||'').slice(0,7) : '';
+    var monStart = filterMon ? filterMon+'-01' : null;
+    var monEnd   = filterMon ? window.monthEnd(filterMon) : null;
+
+    var query = sb.from('unit_discounts')
       .select('id,unit_id,apartment,room,discount_amount,start_date,end_date,reason')
       .order('apartment').order('room').order('start_date');
+
+    // لو في فلتر شهر — جيب الخصومات النشطة في الشهر ده بس
+    if(monStart && monEnd) {
+      query = query.lte('start_date', monEnd).gte('end_date', monStart);
+    }
+
+    var { data: discounts, error } = await query;
     if(error) throw error;
 
     var discounts = discounts || [];
     var out = document.getElementById('rDiscOut');
     if(!discounts.length) {
       out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px">'+
-        (LANG==='ar'?'لا توجد خصومات مسجّلة':'No discounts found')+'</div>';
+        (filterMon ? 'لا توجد خصومات في '+filterMon : (LANG==='ar'?'لا توجد خصومات مسجّلة':'No discounts found'))+'</div>';
       return;
     }
 
-    // تقسيم لنشط وسابق
-    var active = discounts.filter(function(d){ return d.end_date >= today; });
+    // تقسيم لنشط وسابق (بالنسبة لليوم الحالي أو الشهر المختار)
+    var refDate = monEnd || today;
+    var refStart = monStart || today;
+    var active  = discounts.filter(function(d){ return d.end_date >= today; });
     var expired = discounts.filter(function(d){ return d.end_date < today; });
 
-    var totalActive = active.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+    var totalActive  = active.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
     var totalExpired = expired.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+    var totalFiltered = discounts.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
 
     // تجميع بالشقة
     var aptMap = {};
@@ -1746,7 +1762,17 @@ async function loadDiscReport(btn) {
         +'</tr>';
     }
 
-    var html = '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">'
+    var html = '';
+
+    // لو في فلتر شهر — اعرض إجمالي الشهر
+    if(filterMon) {
+      html += '<div style="background:var(--amber)15;border:1px solid var(--amber)44;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
+        +'<div><div style="font-size:.65rem;color:var(--muted)">إجمالي خصومات '+filterMon+'</div>'
+        +'<div style="font-weight:800;color:var(--amber);font-size:1rem">'+discounts.length+' خصم</div></div>'
+        +'<div style="font-weight:900;color:var(--amber);font-size:1.3rem">'+totalFiltered.toLocaleString()+' AED</div></div>';
+    }
+
+    html += '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">'
       +'<div style="background:var(--green)15;border:1px solid var(--green)33;border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
       +'<div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'خصومات نشطة':'Active Discounts')+'</div>'
       +'<div style="font-weight:900;color:var(--green);font-size:1.1rem">'+active.length+' <span style="font-size:.75rem">خصم</span></div>'
