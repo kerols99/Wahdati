@@ -203,13 +203,13 @@ async function loadSmartDash(ym) {
     var cashRent    = cashPays.reduce(function(s,p){ return s+(p.amount||0); },0);
     var cashDeps    = deps.reduce(function(s,d){ return s+(d.amount||0); },0);
     var cashRefunds = refDeps.reduce(function(s,d){ return s+(Number(d.refund_amount)||0); },0);
+    var accrualPaid = accrualPays.reduce(function(s,p){ return s+(p.amount||0); },0);
     var cashTotal   = accrualPaid + cashDeps;
     var totalExp    = exps.reduce(function(s,e){ return s+(e.amount||0); },0);
     var totalOwner  = owners.reduce(function(s,o){ return s+(o.amount||0); },0);
     var cashOut     = totalExp + totalOwner;
     var net         = cashTotal - cashRefunds - cashOut;
     var prevCashTot = prevCash.reduce(function(s,p){ return s+(p.amount||0); },0);
-    var accrualPaid = accrualPays.reduce(function(s,p){ return s+(p.amount||0); },0);
 
     // ── Remaining & pct ──
     var remaining = Math.max(0, expected - accrualPaid);
