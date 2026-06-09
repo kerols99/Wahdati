@@ -319,7 +319,7 @@ async function loadCollReport(btn) {
         .select('unit_id,apartment,room,amount,deposit_received_date,tenant_name,status,refund_date')
         .gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',monthEnd(monYM)),
       sb.from('expenses').select('amount,category,description').eq('period_month', (monYM||'').slice(0,7)+'-01'),
-      sb.from('owner_payments').select('amount').gte('payment_date',monYM+'-01').lte('payment_date',monthEnd(monYM)),
+      sb.from('owner_payments').select('amount').eq('period_month', monYM+'-01'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
       sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,monthly_rent').eq('is_vacant',false),
       // Refunded deposits this month by refund_date
@@ -749,7 +749,7 @@ function initDashboard() {
     var ym  = getActiveMonth();
 
   // Set default month inputs
-  ['rpm','rcoll-month','rem','rdep-month'].forEach(function(id){
+  ['rpm','rcoll-month','rem','rdep-month','o-month','rfin-month','rrefund-month','rdeduct-month'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && !el.value) el.value = ym;
   });

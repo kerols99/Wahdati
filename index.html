@@ -481,6 +481,22 @@
   <button class="btn bp" style="flex:1;font-size:.82rem" data-click="loadDepRpt" id="btn-load-dep-rpt">📅 تأمينات الشهر</button>
 </div>
 <div id="rDepOut" style="margin-top:12px"></div>
+
+  <!-- تقرير التأمينات المُرتجعة -->
+  <div style="margin-top:20px;border-top:2px solid var(--border);padding-top:16px">
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px">↩️ التأمينات المُرتجعة حسب الشهر</div>
+    <input class="inp" id="rrefund-month" type="month" style="margin-bottom:8px"/>
+    <button class="btn bg" style="width:100%;font-size:.82rem" onclick="loadRefundedDepsReport(this)">↩️ عرض التأمينات المُرتجعة</button>
+    <div id="rRefundDepOut" style="margin-top:12px"></div>
+  </div>
+
+  <!-- تقرير خصومات التأمين -->
+  <div style="margin-top:20px;border-top:2px solid var(--border);padding-top:16px">
+    <div style="font-size:.78rem;font-weight:700;color:var(--muted);margin-bottom:8px">✂️ خصومات التأمين حسب الشهر</div>
+    <input class="inp" id="rdeduct-month" type="month" style="margin-bottom:8px"/>
+    <button class="btn bg" style="width:100%;font-size:.82rem" onclick="loadDepDeductionsReport(this)">✂️ عرض خصومات التأمين</button>
+    <div id="rDeductOut" style="margin-top:12px"></div>
+  </div>
 </div>
 <div class="tpanel" id="rAnn">
 <div class="fld"><label id="lbl-ryear">السنة</label><input class="inp" id="r-year" inputmode="numeric" placeholder="2025" type="number"/></div>

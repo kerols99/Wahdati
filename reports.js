@@ -869,19 +869,31 @@ function _finAmt(v){ return 'AED ' + Number(v||0).toLocaleString(); }
 async function getFinancialSummaryData(monYM){
   var start = monthStart(monYM);
   var end = monthEnd(monYM);
-  var [rentR, depR, expR, ownerR] = await Promise.all([
+  var [rentR, depR, expR, ownerR, refR] = await Promise.all([
+    // الإيجار: payment_date (نفس Collection Report)
     sb.from('rent_payments').select('amount').gte('payment_date', start).lte('payment_date', end),
-    sb.from('deposits').select('amount,status').gte('deposit_received_date', start).lte('deposit_received_date', end),
+    // التأمينات: deposit_received_date في الشهر (نفس Collection Report)
+    sb.from('deposits').select('amount,status,refund_date,deposit_received_date').gte('deposit_received_date', start).lte('deposit_received_date', end),
     sb.from('expenses').select('amount').eq('period_month', (monYM||'').slice(0,7)+'-01'),
-    sb.from('owner_payments').select('amount').eq('period_month', (monYM||'').slice(0,7)+'-01')
+    // دفعات المالك: period_month
+    sb.from('owner_payments').select('amount').eq('period_month', (monYM||'').slice(0,7)+'-01'),
+    // المرتجعات في الشهر: refund_date
+    sb.from('deposits').select('refund_amount,refund_date').gt('refund_amount',0).gte('refund_date', start).lte('refund_date', end)
   ]);
   var rent = (rentR.data||[]).reduce(function(s,r){return s+Number(r.amount||0);},0);
-  var deps = (depR.data||[]).reduce(function(s,r){return s+Number(r.amount||0);},0);
+  // التأمينات: نفس منطق Collection Report — استبعاد refunded لو refund_date = deposit_received_date
+  var deps = (depR.data||[]).reduce(function(s,d){
+    var rdFull = String(d.deposit_received_date||'').slice(0,10);
+    var refFull = String(d.refund_date||'').slice(0,10);
+    if(rdFull && refFull && rdFull === refFull && Number(d.refund_amount||0) > 0) return s;
+    return s + Number(d.amount||0);
+  },0);
+  var refunds = (refR.data||[]).reduce(function(s,r){return s+Number(r.refund_amount||0);},0);
   var exps = (expR.data||[]).reduce(function(s,r){return s+Number(r.amount||0);},0);
   var owner = (ownerR.data||[]).reduce(function(s,r){return s+Number(r.amount||0);},0);
   var cashIn = rent + deps;
-  var cashOut = exps + owner;
-  return { month: monYM, rent: rent, deposits: deps, cashIn: cashIn, expenses: exps, ownerPayments: owner, cashOut: cashOut, net: cashIn - cashOut };
+  var cashOut = exps + owner + refunds;
+  return { month: monYM, rent: rent, deposits: deps, refunds: refunds, cashIn: cashIn, expenses: exps, ownerPayments: owner, cashOut: cashOut, net: cashIn - cashOut };
 }
 
 function renderFinancialSummaryBox(x){
@@ -893,6 +905,7 @@ function renderFinancialSummaryBox(x){
     +'<div class="sum"><span>إجمالي الإيجار</span><b>'+_finAmt(x.rent)+'</b></div>'
     +'<div class="sum"><span>إجمالي التأمينات</span><b>'+_finAmt(x.deposits)+'</b></div>'
     +'<div class="sum sum-highlight"><span>إجمالي الداخل</span><b>'+_finAmt(x.cashIn)+'</b></div>'
+    +(x.refunds>0?'<div class="sum" style="border:1px solid var(--red)33"><span style="color:var(--red)">تأمينات مُرتجعة</span><b style="color:var(--red)">- '+_finAmt(x.refunds)+'</b></div>':'')
     +'<div class="sum"><span>إجمالي المصاريف</span><b>'+_finAmt(x.expenses)+'</b></div>'
     +'<div class="sum"><span>مدفوعات المالك</span><b>'+_finAmt(x.ownerPayments)+'</b></div>'
     +'<div class="sum sum-highlight"><span>إجمالي الخارج</span><b>'+_finAmt(x.cashOut)+'</b></div>'
@@ -1779,3 +1792,250 @@ async function loadDiscReport(btn) {
   }
 }
 window.loadDiscReport = loadDiscReport;
+
+// ══════════════════════════════════════════════════════
+// REFUNDED DEPOSITS REPORT
+// ══════════════════════════════════════════════════════
+async function loadRefundedDepsReport(btn) {
+  var monEl = document.getElementById('rrefund-month');
+  if(!monEl || !monEl.value) { toast(LANG==='ar'?'اختر الشهر':'Choose month','err'); return; }
+  var monYM = monEl.value.slice(0,7);
+  var orig = btn ? btn.innerHTML : '';
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+  try {
+    var start = monYM+'-01';
+    var end   = window.monthEnd(monYM);
+
+    var { data: refunds, error } = await sb.from('deposits')
+      .select('id,unit_id,apartment,room,tenant_name,amount,refund_amount,refund_date,deduction_amount,deduction_reason,deposit_received_date,status')
+      .gt('refund_amount', 0)
+      .gte('refund_date', start)
+      .lte('refund_date', end)
+      .order('apartment').order('room');
+    if(error) throw error;
+
+    var out = document.getElementById('rRefundDepOut');
+    if(!out) { toast('rRefundDepOut not found','err'); return; }
+
+    if(!refunds || !refunds.length) {
+      out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px">لا توجد تأمينات مُرتجعة في '+monYM+'</div>';
+      return;
+    }
+
+    var totalDeposit    = refunds.reduce(function(s,d){ return s+Number(d.amount||0); },0);
+    var totalRefund     = refunds.reduce(function(s,d){ return s+Number(d.refund_amount||0); },0);
+    var totalDeductions = refunds.reduce(function(s,d){ return s+Number(d.deduction_amount||0); },0);
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    var html = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'
+      +'<div style="background:var(--accent-glow);border:1px solid var(--accent);border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">إجمالي التأمينات</div>'
+      +'<div style="font-weight:800;color:var(--accent);font-size:1rem">'+totalDeposit.toLocaleString()+' AED</div></div>'
+      +'<div style="background:var(--red)15;border:1px solid var(--red)33;border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">إجمالي الخصومات</div>'
+      +'<div style="font-weight:800;color:var(--red);font-size:1rem">'+totalDeductions.toLocaleString()+' AED</div></div>'
+      +'<div style="background:var(--green)15;border:1px solid var(--green)33;border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">صافي المُرتجع</div>'
+      +'<div style="font-weight:800;color:var(--green);font-size:1rem">'+totalRefund.toLocaleString()+' AED</div></div>'
+      +'</div>';
+
+    html += '<button onclick="exportRefundedDepsPDF(\''+monYM+'\')" style="width:100%;padding:11px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:14px">📄 PDF</button>';
+
+    html += '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">';
+    refunds.forEach(function(d, i){
+      var bg = i%2===0 ? '' : 'background:var(--surf2);';
+      html += '<div style="padding:11px 14px;border-bottom:1px solid var(--border)22;'+bg+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        +'<div>'
+        +'<div style="font-size:.85rem;font-weight:700">شقة '+esc(d.apartment||'')+'–'+esc(d.room||'')+' <span style="font-weight:400;color:var(--muted);font-size:.75rem">'+esc(d.tenant_name||'—')+'</span></div>'
+        +'<div style="font-size:.7rem;color:var(--muted);margin-top:2px">تاريخ الإرجاع: '+(d.refund_date||'').slice(0,10)+'</div>'
+        +(d.deduction_reason?'<div style="font-size:.7rem;color:var(--amber);margin-top:1px">سبب الخصم: '+esc(d.deduction_reason)+'</div>':'')
+        +'</div>'
+        +'<div style="text-align:end">'
+        +'<div style="font-size:.78rem;color:var(--muted)">أصل التأمين: <b>'+Number(d.amount||0).toLocaleString()+'</b></div>'
+        +(d.deduction_amount?'<div style="font-size:.75rem;color:var(--red)">خصم: -'+Number(d.deduction_amount).toLocaleString()+'</div>':'')
+        +'<div style="font-size:.88rem;font-weight:800;color:var(--green)">مُرتجع: '+Number(d.refund_amount||0).toLocaleString()+' AED</div>'
+        +'</div>'
+        +'</div>'
+        +'</div>';
+    });
+    html += '</div>';
+
+    out.innerHTML = html;
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    console.error('loadRefundedDepsReport:', e);
+  } finally {
+    if(btn) { btn.disabled=false; btn.innerHTML=orig; }
+  }
+}
+
+async function exportRefundedDepsPDF(monYM) {
+  var start = monYM+'-01';
+  var end   = window.monthEnd(monYM);
+  var { data: refunds } = await sb.from('deposits')
+    .select('apartment,room,tenant_name,amount,refund_amount,refund_date,deduction_amount,deduction_reason')
+    .gt('refund_amount', 0).gte('refund_date', start).lte('refund_date', end)
+    .order('apartment').order('room');
+
+  var totalDeposit = (refunds||[]).reduce(function(s,d){return s+Number(d.amount||0);},0);
+  var totalRefund  = (refunds||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
+  var totalDed     = (refunds||[]).reduce(function(s,d){return s+Number(d.deduction_amount||0);},0);
+  var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+  var rows = (refunds||[]).map(function(d){
+    return '<tr>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(d.apartment||'')+'–'+esc(d.room||'')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(d.tenant_name||'—')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center">'+Number(d.amount||0).toLocaleString()+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;color:#c0392b">'+Number(d.deduction_amount||0).toLocaleString()+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px">'+esc(d.deduction_reason||'—')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;color:#1a7a4a;font-weight:700">'+Number(d.refund_amount||0).toLocaleString()+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:11px">'+(d.refund_date||'').slice(0,10)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  document.getElementById('pdf-content').innerHTML =
+    '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
+    +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
+    +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير التأمينات المُرتجعة</div>'
+    +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
+    +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'
+    +'<div style="background:#e8f0fe;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a3a6a">'+totalDeposit.toLocaleString()+'</div><div style="font-size:10px;color:#555">إجمالي التأمينات</div></div>'
+    +'<div style="background:#ffeaea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#c0392b">'+totalDed.toLocaleString()+'</div><div style="font-size:10px;color:#555">إجمالي الخصومات</div></div>'
+    +'<div style="background:#e8f5ee;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a7a4a">'+totalRefund.toLocaleString()+'</div><div style="font-size:10px;color:#555">صافي المُرتجع</div></div>'
+    +'</div>'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#1a3a6a;color:#fff">'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">الوحدة</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">المستأجر</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">التأمين</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">الخصم</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">سبب الخصم</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">المُرتجع</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">تاريخ الإرجاع</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="background:#f0f0f0;font-weight:700">'
+    +'<td colspan="2" style="padding:7px 8px;border:1px solid #ddd;text-align:right">الإجمالي</td>'
+    +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center">'+totalDeposit.toLocaleString()+'</td>'
+    +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#c0392b">'+totalDed.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #ddd"></td>'
+    +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#1a7a4a">'+totalRefund.toLocaleString()+'</td>'
+    +'<td style="border:1px solid #ddd"></td>'
+    +'</tr></tfoot></table></div>';
+  document.getElementById('pdfOverlay').style.display='flex';
+}
+
+// ══════════════════════════════════════════════════════
+// DEPOSIT DEDUCTIONS REPORT
+// ══════════════════════════════════════════════════════
+async function loadDepDeductionsReport(btn) {
+  var monEl = document.getElementById('rdeduct-month');
+  if(!monEl || !monEl.value) { toast(LANG==='ar'?'اختر الشهر':'Choose month','err'); return; }
+  var monYM = monEl.value.slice(0,7);
+  var orig = btn ? btn.innerHTML : '';
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+  try {
+    var start = monYM+'-01';
+    var end   = window.monthEnd(monYM);
+
+    var { data: deductions, error } = await sb.from('deposits')
+      .select('id,unit_id,apartment,room,tenant_name,amount,deduction_amount,deduction_reason,refund_date')
+      .gt('deduction_amount', 0)
+      .gte('refund_date', start)
+      .lte('refund_date', end)
+      .order('apartment').order('room');
+    if(error) throw error;
+
+    var out = document.getElementById('rDeductOut');
+    if(!out) { toast('rDeductOut not found','err'); return; }
+
+    if(!deductions || !deductions.length) {
+      out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px">لا توجد خصومات في '+monYM+'</div>';
+      return;
+    }
+
+    var totalDed = deductions.reduce(function(s,d){ return s+Number(d.deduction_amount||0); },0);
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    var html = '<div style="background:var(--red)15;border:1px solid var(--red)33;border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span style="font-weight:700">إجمالي الخصومات</span>'
+      +'<span style="font-weight:800;color:var(--red);font-size:1.1rem">'+totalDed.toLocaleString()+' AED</span></div>';
+
+    html += '<button onclick="exportDepDeductionsPDF(\''+monYM+'\')" style="width:100%;padding:11px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:14px">📄 PDF</button>';
+
+    html += '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">';
+    deductions.forEach(function(d, i){
+      var bg = i%2===0 ? '' : 'background:var(--surf2);';
+      html += '<div style="padding:11px 14px;border-bottom:1px solid var(--border)22;'+bg+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center">'
+        +'<div>'
+        +'<div style="font-size:.85rem;font-weight:700">شقة '+esc(d.apartment||'')+'–'+esc(d.room||'')+' <span style="font-weight:400;color:var(--muted);font-size:.75rem">'+esc(d.tenant_name||'—')+'</span></div>'
+        +'<div style="font-size:.72rem;color:var(--amber);margin-top:2px">'+esc(d.deduction_reason||'—')+'</div>'
+        +'<div style="font-size:.68rem;color:var(--muted)">تاريخ: '+(d.refund_date||'').slice(0,10)+'</div>'
+        +'</div>'
+        +'<div style="font-weight:800;color:var(--red);font-size:.9rem">'+Number(d.deduction_amount||0).toLocaleString()+' AED</div>'
+        +'</div>'
+        +'</div>';
+    });
+    html += '</div>';
+    out.innerHTML = html;
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    console.error('loadDepDeductionsReport:', e);
+  } finally {
+    if(btn) { btn.disabled=false; btn.innerHTML=orig; }
+  }
+}
+
+async function exportDepDeductionsPDF(monYM) {
+  var start = monYM+'-01';
+  var end   = window.monthEnd(monYM);
+  var { data: deductions } = await sb.from('deposits')
+    .select('apartment,room,tenant_name,amount,deduction_amount,deduction_reason,refund_date')
+    .gt('deduction_amount', 0).gte('refund_date', start).lte('refund_date', end)
+    .order('apartment').order('room');
+
+  var totalDed = (deductions||[]).reduce(function(s,d){return s+Number(d.deduction_amount||0);},0);
+  var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+  var rows = (deductions||[]).map(function(d){
+    return '<tr>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(d.apartment||'')+'–'+esc(d.room||'')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(d.tenant_name||'—')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;color:#c0392b;font-weight:700">'+Number(d.deduction_amount||0).toLocaleString()+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;font-size:11px">'+esc(d.deduction_reason||'—')+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:11px">'+(d.refund_date||'').slice(0,10)+'</td>'
+      +'</tr>';
+  }).join('');
+
+  document.getElementById('pdf-content').innerHTML =
+    '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
+    +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
+    +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير خصومات التأمين</div>'
+    +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
+    +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
+    +'<div style="background:#ffeaea;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between">'
+    +'<span style="font-weight:700;font-size:13px">إجمالي الخصومات</span>'
+    +'<span style="font-weight:800;color:#c0392b;font-size:15px">'+totalDed.toLocaleString()+' AED</span></div>'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#1a3a6a;color:#fff">'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">الوحدة</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">المستأجر</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">مبلغ الخصم</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">السبب</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">تاريخ الإرجاع</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="background:#f0f0f0;font-weight:700">'
+    +'<td colspan="2" style="padding:7px 8px;border:1px solid #ddd;text-align:right">الإجمالي</td>'
+    +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#c0392b">'+totalDed.toLocaleString()+' AED</td>'
+    +'<td colspan="2" style="border:1px solid #ddd"></td>'
+    +'</tr></tfoot></table></div>';
+  document.getElementById('pdfOverlay').style.display='flex';
+}
+
+window.loadRefundedDepsReport = loadRefundedDepsReport;
+window.exportRefundedDepsPDF  = exportRefundedDepsPDF;
+window.loadDepDeductionsReport = loadDepDeductionsReport;
+window.exportDepDeductionsPDF  = exportDepDeductionsPDF;
