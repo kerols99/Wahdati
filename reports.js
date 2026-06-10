@@ -289,7 +289,7 @@ async function loadMonthly(btn) {
     });
 
     // حفظ بيانات الشهر عشان exportPDF يستخدمها بدون ما يعمل fetch تاني
-    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap };
+    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap, refundedDeps: refundedDepsRes.data||[] };
 
     // depRawMap: all deposit rows per unit_id AND per apartment-room
     var depRawMap = {};
@@ -614,36 +614,7 @@ async function loadMonthly(btn) {
         +'</div></div>';
     }
 
-    // ── جدول مقارنة الاستحقاق والتحصيل الفعلي ──
-    var [cashRentRes, cashDepsRes, cashRefRes] = await Promise.all([
-      // التحصيل الفعلي: payment_date
-      sb.from('rent_payments').select('amount').gte('payment_date', monStart).lte('payment_date', monEnd),
-      // التأمينات الفعلية: deposit_received_date
-      sb.from('deposits').select('amount,status,refund_date,deposit_received_date')
-        .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
-      // المرتجعات الفعلية: refund_date
-      sb.from('deposits').select('refund_amount')
-        .gt('refund_amount', 0).gte('refund_date', monStart).lte('refund_date', monEnd)
-    ]);
-    var cashRent    = (cashRentRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
-    var cashDepsAmt = (cashDepsRes.data||[]).reduce(function(s,d){
-      var rdFull=String(d.deposit_received_date||'').slice(0,10);
-      var refFull=String(d.refund_date||'').slice(0,10);
-      if(rdFull&&refFull&&rdFull===refFull&&Number(d.refund_amount||0)>0) return s;
-      return s+Number(d.amount||0);
-    },0);
-    var cashRefAmt  = (cashRefRes.data||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
-    var cashNetColl = cashRent + cashDepsAmt - cashRefAmt;
-    var cashNetAccr = totalRentColl + totalDeps - totalRefunds;
 
-    var diffRow = function(label, accrVal, cashVal) {
-      var diff = cashVal - accrVal;
-      var col  = diff>0?'var(--green)':diff<0?'var(--red)':'var(--muted)';
-      var arr  = diff>0?'↑':diff<0?'↓':'—';
-      return '<tr style="border-bottom:1px solid var(--border)22">'        +'<td style="padding:7px 10px;font-size:.78rem;color:var(--muted)">'+label+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:700">'+accrVal.toLocaleString()+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:700">'+cashVal.toLocaleString()+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:800;color:'+col+'">'        +(diff!==0?arr+' '+(Math.abs(diff)).toLocaleString():'—')+'</td>'        +'</tr>';
-    };
-
-    html += '<div class="card" style="padding:0;overflow:hidden;margin-top:8px">'      +'<div style="padding:10px 14px;background:var(--surf2);border-bottom:2px solid var(--border);font-weight:800;font-size:.85rem">'      +'📊 مقارنة الاستحقاق والتحصيل الفعلي</div>'      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'      +'<thead><tr style="background:var(--surf3)">'      +'<th style="padding:7px 10px;text-align:right;font-size:.72rem;color:var(--muted)">البند</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">استحقاق (payment_month)</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">فعلي (payment_date)</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">الفرق</th>'      +'</tr></thead><tbody>'      +diffRow('الإيجار', totalRentColl, cashRent)      +diffRow('التأمينات المستلمة', totalDeps, cashDepsAmt)      +diffRow('التأمينات المرتجعة', totalRefunds, cashRefAmt)      +diffRow('إجمالي الكاش', cashNetAccr, cashNetColl)      +'</tbody></table></div>'      +'<div style="padding:8px 14px;font-size:.68rem;color:var(--muted);border-top:1px solid var(--border)22">'      +'💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.'      +'</div></div>';
 
     window._lastPDFMon = mon;
     html = '<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn bg" style="font-size:.78rem;flex:1;touch-action:manipulation" onclick="exportPDF(\'monthly\',window._lastPDFMon)">📄 PDF</button></div>' + html;
@@ -1136,6 +1107,20 @@ async function exportPDF(type, mon) {
     var _pdfDiscMap = {};
     if(window._pdfData && window._pdfData.discMap) {
       _pdfDiscMap = window._pdfData.discMap;
+    }
+
+    // totalRefunds — محتاجه في جدول المقارنة
+    var _refundedDepsData = window._pdfData.refundedDeps || [];
+    var totalRefunds = _refundedDepsData.reduce(function(s,d){ return s+(Number(d.refund_amount)||0); }, 0);
+    // لو مش محفوظ — نجيبه من السيرفر
+    if(!_refundedDepsData.length) {
+      try {
+        var _rr = await sb.from('deposits').select('refund_amount')
+          .gt('refund_amount',0)
+          .gte('refund_date', monYM+'-01')
+          .lte('refund_date', window.monthEnd(monYM));
+        totalRefunds = (_rr.data||[]).reduce(function(s,d){return s+(Number(d.refund_amount)||0);},0);
+      } catch(_e){}
     }
 
     var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
@@ -2192,16 +2177,20 @@ async function loadVacantHistoricalReport(btn) {
         daysVacant = Math.max(0, Math.round((d2-d1)/(1000*60*60*24)));
       }
 
+      // لو مفيش مستأجر سابق — استخدم إيجار الوحدة الحالي كتقدير للخسارة
+      var estimatedRent = lastTenant ? (lastTenant.monthly_rent||0) : (u.monthly_rent||0);
+
       return {
-        id:          u.id,
-        apartment:   u.apartment,
-        room:        u.room,
-        lastTenant:  lastTenant ? (lastTenant.tenant_name||'—') : 'No Previous Tenant',
-        startDate:   lastTenant ? (lastTenant.start_date||'—') : '—',
-        endDate:     lastTenant ? (lastTenant.end_date||'—')   : '—',
-        lastRent:    lastTenant ? (lastTenant.monthly_rent||0) : 0,
-        daysVacant:  daysVacant,
-        vacantSince: vacantSince
+        id:           u.id,
+        apartment:    u.apartment,
+        room:         u.room,
+        lastTenant:   lastTenant ? (lastTenant.tenant_name||'—') : 'No Previous Tenant',
+        startDate:    lastTenant ? (lastTenant.start_date||'—') : '—',
+        endDate:      lastTenant ? (lastTenant.end_date||'—')   : '—',
+        lastRent:     estimatedRent,
+        isEstimated:  !lastTenant && estimatedRent > 0,  // إيجار تقديري مش حقيقي
+        daysVacant:   daysVacant,
+        vacantSince:  vacantSince
       };
     });
 
@@ -2287,7 +2276,9 @@ async function loadVacantHistoricalReport(btn) {
             +(r.endDate!=='—'?'<div style="font-size:.65rem;color:var(--muted)">خرج: '+r.endDate+'</div>':'')
             +'</div>'
             +'<div style="text-align:end">'
-            +(r.lastRent>0?'<div style="font-size:.75rem;color:var(--muted)">'+r.lastRent.toLocaleString()+' AED</div>':'')
+            +(r.lastRent>0
+              ? '<div style="font-size:.75rem;color:'+(r.isEstimated?'var(--amber)':'var(--muted)')+'">'+r.lastRent.toLocaleString()+' AED'+(r.isEstimated?' <span style="font-size:.62rem">(تقديري)</span>':'')+'</div>'
+              : '')
             +'<div style="font-size:.78rem;font-weight:800;color:'+daysColor+'">'+r.daysVacant+' يوم</div>'
             +'</div></div>';
         });
@@ -2429,3 +2420,156 @@ async function exportVacantPDF(monYM) {
 
 window.loadVacantHistoricalReport = loadVacantHistoricalReport;
 window.exportVacantPDF = exportVacantPDF;
+
+// ══════════════════════════════════════════════════════
+// ACCRUAL VS CASH COMPARISON REPORT
+// مقارنة الاستحقاق (payment_month) والتحصيل الفعلي (payment_date)
+// ══════════════════════════════════════════════════════
+async function loadAccrualCashComparison(btn) {
+  var monEl = document.getElementById('raccrual-month');
+  if(!monEl || !monEl.value) { toast(LANG==='ar'?'اختر الشهر':'Choose month','err'); return; }
+  var monYM    = monEl.value.slice(0,7);
+  var monStart = monYM+'-01';
+  var monEnd   = window.monthEnd(monYM);
+  var orig = btn ? btn.innerHTML : '';
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+
+  try {
+    var [accrRentRes, cashRentRes, depsRes, cashDepsRes, accrRefRes, cashRefRes] = await Promise.all([
+      // استحقاق: payment_month
+      sb.from('rent_payments').select('unit_id,amount,payment_date,payment_month,apartment,room')
+        .like('payment_month', monYM+'%'),
+      // فعلي: payment_date
+      sb.from('rent_payments').select('unit_id,amount,payment_date,payment_month,apartment,room')
+        .gte('payment_date', monStart).lte('payment_date', monEnd),
+      // تأمينات الاستحقاق
+      sb.from('deposits').select('amount,status,refund_date,deposit_received_date')
+        .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      // تأمينات فعلية (نفس الاستحقاق هنا)
+      sb.from('deposits').select('amount,status,refund_date,deposit_received_date')
+        .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      // مرتجعات الاستحقاق: refund_date
+      sb.from('deposits').select('refund_amount').gt('refund_amount',0)
+        .gte('refund_date', monStart).lte('refund_date', monEnd),
+      // مرتجعات فعلية (نفس)
+      sb.from('deposits').select('refund_amount').gt('refund_amount',0)
+        .gte('refund_date', monStart).lte('refund_date', monEnd)
+    ]);
+
+    var accrRent = (accrRentRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
+    var cashRent = (cashRentRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
+
+    var calcDeps = function(data) {
+      return (data||[]).reduce(function(s,d){
+        var r=String(d.deposit_received_date||'').slice(0,10);
+        var rf=String(d.refund_date||'').slice(0,10);
+        if(r&&rf&&r===rf&&Number(d.refund_amount||0)>0) return s;
+        return s+Number(d.amount||0);
+      },0);
+    };
+    var accrDeps = calcDeps(depsRes.data);
+    var cashDeps = calcDeps(cashDepsRes.data);
+    var accrRef  = (accrRefRes.data||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
+    var cashRef  = (cashRefRes.data||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
+
+    var accrNet = accrRent + accrDeps - accrRef;
+    var cashNet = cashRent + cashDeps - cashRef;
+
+    // الدفعات اللي سببت الفرق في الإيجار
+    // دفعات وصلت في payment_date=أبريل بس payment_month != أبريل
+    var diffPays = (cashRentRes.data||[]).filter(function(p){
+      return (p.payment_month||'').slice(0,7) !== monYM;
+    });
+    // دفعات payment_month=أبريل بس payment_date خارج أبريل
+    var accrOnlyPays = (accrRentRes.data||[]).filter(function(p){
+      var pd = (p.payment_date||'').slice(0,7);
+      return pd !== monYM;
+    });
+
+    var out = document.getElementById('rAccrualCashOut');
+    if(!out) return;
+
+    var diffRow = function(label, accrVal, cashVal) {
+      var diff = cashVal - accrVal;
+      var col  = diff>0?'var(--green)':diff<0?'var(--red)':'var(--muted)';
+      var arr  = diff>0?'↑':diff<0?'↓':'—';
+      return '<tr style="border-bottom:1px solid var(--border)22">'
+        +'<td style="padding:8px 12px;font-size:.78rem">'+label+'</td>'
+        +'<td style="padding:8px 12px;font-size:.78rem;text-align:center;font-weight:700">'+accrVal.toLocaleString()+'</td>'
+        +'<td style="padding:8px 12px;font-size:.78rem;text-align:center;font-weight:700">'+cashVal.toLocaleString()+'</td>'
+        +'<td style="padding:8px 12px;font-size:.78rem;text-align:center;font-weight:800;color:'+col+'">'
+        +(diff!==0?arr+' '+Math.abs(diff).toLocaleString():'—')+'</td>'
+        +'</tr>';
+    };
+
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    var html = '<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">'
+      +'<div style="padding:10px 14px;background:var(--surf2);border-bottom:2px solid var(--border);font-weight:800;font-size:.85rem">'
+      +'📊 مقارنة '+monYM+'</div>'
+      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+      +'<thead><tr style="background:var(--surf3)">'
+      +'<th style="padding:7px 10px;text-align:right;font-size:.72rem;color:var(--muted)">البند</th>'
+      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">استحقاق<br><span style="font-size:.62rem">(payment_month)</span></th>'
+      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">فعلي<br><span style="font-size:.62rem">(payment_date)</span></th>'
+      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">الفرق</th>'
+      +'</tr></thead><tbody>'
+      +diffRow('الإيجار', accrRent, cashRent)
+      +diffRow('التأمينات المستلمة', accrDeps, cashDeps)
+      +diffRow('التأمينات المرتجعة', accrRef, cashRef)
+      +diffRow('إجمالي الكاش', accrNet, cashNet)
+      +'</tbody></table></div>'
+      +'<div style="padding:8px 14px;font-size:.68rem;color:var(--muted);border-top:1px solid var(--border)22">'
+      +'💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.'
+      +'</div></div>';
+
+    // ── جدول تفصيل الفرق في الإيجار ──
+    var rentDiff = cashRent - accrRent;
+    if(rentDiff !== 0) {
+      html += '<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px">'
+        +'<div style="padding:10px 14px;background:var(--surf2);border-bottom:2px solid var(--border);font-weight:800;font-size:.85rem">'
+        +'🔍 تفصيل فرق الإيجار ('+rentDiff.toLocaleString()+' AED)'
+        +'</div>';
+
+      // دفعات وصلت في أبريل بس لشهور تانية
+      if(diffPays.length) {
+        var diffTotal = diffPays.reduce(function(s,p){return s+(p.amount||0);},0);
+        html += '<div style="padding:8px 14px;background:var(--green)12;font-size:.72rem;font-weight:700;color:var(--green);border-bottom:1px solid var(--border)22">'
+          +'💰 دفعات وصلت في '+monYM+' لكنها لشهور أخرى (+'+diffTotal.toLocaleString()+' AED)</div>';
+        diffPays.forEach(function(p){
+          html += '<div style="display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid var(--border)22;font-size:.75rem">'
+            +'<div><b>شقة '+esc(String(p.apartment||''))+'–'+esc(String(p.room||''))+'</b>'
+            +'<span style="color:var(--muted);margin-right:6px"> تاريخ الدفع: '+(p.payment_date||'').slice(0,10)+'</span>'
+            +'<span style="color:var(--amber)"> لشهر: '+(p.payment_month||'').slice(0,7)+'</span></div>'
+            +'<b style="color:var(--green)">+'+Number(p.amount||0).toLocaleString()+'</b>'
+            +'</div>';
+        });
+      }
+
+      // دفعات استحقاقها أبريل بس دُفعت في شهر تاني
+      if(accrOnlyPays.length) {
+        var accrOnlyTotal = accrOnlyPays.reduce(function(s,p){return s+(p.amount||0);},0);
+        html += '<div style="padding:8px 14px;background:var(--red)12;font-size:.72rem;font-weight:700;color:var(--red);border-bottom:1px solid var(--border)22">'
+          +'⏳ دفعات إيجار '+monYM+' دُفعت في شهور أخرى (-'+accrOnlyTotal.toLocaleString()+' AED)</div>';
+        accrOnlyPays.forEach(function(p){
+          html += '<div style="display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid var(--border)22;font-size:.75rem">'
+            +'<div><b>شقة '+esc(String(p.apartment||''))+'–'+esc(String(p.room||''))+'</b>'
+            +'<span style="color:var(--muted);margin-right:6px"> دُفع في: '+(p.payment_date||'').slice(0,10)+'</span></div>'
+            +'<b style="color:var(--red)">-'+Number(p.amount||0).toLocaleString()+'</b>'
+            +'</div>';
+        });
+      }
+
+      html += '</div>';
+    }
+
+    out.innerHTML = html;
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    console.error('loadAccrualCashComparison:', e);
+  } finally {
+    if(btn) { btn.disabled=false; btn.innerHTML=orig; }
+  }
+}
+
+window.loadAccrualCashComparison = loadAccrualCashComparison;

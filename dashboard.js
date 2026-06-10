@@ -749,7 +749,7 @@ function initDashboard() {
     var ym  = getActiveMonth();
 
   // Set default month inputs
-  ['rpm','rcoll-month','rem','rdep-month','o-month','rfin-month','rrefund-month','rdeduct-month','rvacant-month'].forEach(function(id){
+  ['rpm','rcoll-month','rem','rdep-month','o-month','rfin-month','rrefund-month','rdeduct-month','rvacant-month','raccrual-month'].forEach(function(id){
     var el = document.getElementById(id);
     if(el && !el.value) el.value = ym;
   });
