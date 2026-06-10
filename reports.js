@@ -2175,10 +2175,18 @@ async function loadVacantHistoricalReport(btn) {
         var d1 = new Date(vacantSince);
         var d2 = new Date(monEnd);
         daysVacant = Math.max(0, Math.round((d2-d1)/(1000*60*60*24)));
+      } else {
+        // لا يوجد مستأجر سابق — شاغرة من أول الشهر
+        var d1 = new Date(monStart);
+        var d2 = new Date(monEnd);
+        daysVacant = Math.max(1, Math.round((d2-d1)/(1000*60*60*24)));
+        vacantSince = monStart;
       }
 
-      // لو مفيش مستأجر سابق — استخدم إيجار الوحدة الحالي كتقدير للخسارة
-      var estimatedRent = lastTenant ? (lastTenant.monthly_rent||0) : (u.monthly_rent||0);
+      // لو مفيش مستأجر سابق أو إيجاره 0 — استخدم إيجار الوحدة الحالي كتقدير
+      var estimatedRent = lastTenant && (lastTenant.monthly_rent||0) > 0
+        ? (lastTenant.monthly_rent||0)
+        : (u.monthly_rent||0);
 
       return {
         id:           u.id,
