@@ -1134,8 +1134,13 @@ async function printOwnerSettlement() {
       sb.from('units').select('id,apartment,room,tenant_name,tenant_name2'),
       sb.from('deposits').select('unit_id,apartment,room,amount,refund_amount,deposit_received_date,tenant_name,status,refund_date')
         .gt('refund_amount', 0)
+        .gte('refund_date', monthStartDate)
+        .lte('refund_date', monthEndDate)
     ]);
     var pays=pR.data||[], deps=dR.data||[], exps=eR.data||[], owns=oR.data||[], units=uR.data||[];
+    // Debug: طباعة refund_date filter
+    console.log('[Owner Report] refund_date filter:', monthStartDate, '→', monthEndDate);
+    console.log('[Owner Report] refundedDeps count:', (rR.data||[]).length);
     var refundedDeps = rR.data||[];
     var unitById = {};
     units.forEach(function(u){ unitById[u.id]=u; });

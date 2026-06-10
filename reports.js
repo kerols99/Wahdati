@@ -614,6 +614,37 @@ async function loadMonthly(btn) {
         +'</div></div>';
     }
 
+    // ── جدول مقارنة الاستحقاق والتحصيل الفعلي ──
+    var [cashRentRes, cashDepsRes, cashRefRes] = await Promise.all([
+      // التحصيل الفعلي: payment_date
+      sb.from('rent_payments').select('amount').gte('payment_date', monStart).lte('payment_date', monEnd),
+      // التأمينات الفعلية: deposit_received_date
+      sb.from('deposits').select('amount,status,refund_date,deposit_received_date')
+        .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
+      // المرتجعات الفعلية: refund_date
+      sb.from('deposits').select('refund_amount')
+        .gt('refund_amount', 0).gte('refund_date', monStart).lte('refund_date', monEnd)
+    ]);
+    var cashRent    = (cashRentRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
+    var cashDepsAmt = (cashDepsRes.data||[]).reduce(function(s,d){
+      var rdFull=String(d.deposit_received_date||'').slice(0,10);
+      var refFull=String(d.refund_date||'').slice(0,10);
+      if(rdFull&&refFull&&rdFull===refFull&&Number(d.refund_amount||0)>0) return s;
+      return s+Number(d.amount||0);
+    },0);
+    var cashRefAmt  = (cashRefRes.data||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
+    var cashNetColl = cashRent + cashDepsAmt - cashRefAmt;
+    var cashNetAccr = totalRentColl + totalDeps - totalRefunds;
+
+    var diffRow = function(label, accrVal, cashVal) {
+      var diff = cashVal - accrVal;
+      var col  = diff>0?'var(--green)':diff<0?'var(--red)':'var(--muted)';
+      var arr  = diff>0?'↑':diff<0?'↓':'—';
+      return '<tr style="border-bottom:1px solid var(--border)22">'        +'<td style="padding:7px 10px;font-size:.78rem;color:var(--muted)">'+label+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:700">'+accrVal.toLocaleString()+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:700">'+cashVal.toLocaleString()+'</td>'        +'<td style="padding:7px 10px;font-size:.78rem;text-align:center;font-weight:800;color:'+col+'">'        +(diff!==0?arr+' '+(Math.abs(diff)).toLocaleString():'—')+'</td>'        +'</tr>';
+    };
+
+    html += '<div class="card" style="padding:0;overflow:hidden;margin-top:8px">'      +'<div style="padding:10px 14px;background:var(--surf2);border-bottom:2px solid var(--border);font-weight:800;font-size:.85rem">'      +'📊 مقارنة الاستحقاق والتحصيل الفعلي</div>'      +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'      +'<thead><tr style="background:var(--surf3)">'      +'<th style="padding:7px 10px;text-align:right;font-size:.72rem;color:var(--muted)">البند</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">استحقاق (payment_month)</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">فعلي (payment_date)</th>'      +'<th style="padding:7px 10px;text-align:center;font-size:.72rem;color:var(--muted)">الفرق</th>'      +'</tr></thead><tbody>'      +diffRow('الإيجار', totalRentColl, cashRent)      +diffRow('التأمينات المستلمة', totalDeps, cashDepsAmt)      +diffRow('التأمينات المرتجعة', totalRefunds, cashRefAmt)      +diffRow('إجمالي الكاش', cashNetAccr, cashNetColl)      +'</tbody></table></div>'      +'<div style="padding:8px 14px;font-size:.68rem;color:var(--muted);border-top:1px solid var(--border)22">'      +'💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.'      +'</div></div>';
+
     window._lastPDFMon = mon;
     html = '<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn bg" style="font-size:.78rem;flex:1;touch-action:manipulation" onclick="exportPDF(\'monthly\',window._lastPDFMon)">📄 PDF</button></div>' + html;
     document.getElementById('rMonOut').innerHTML = html;
@@ -1703,41 +1734,25 @@ async function loadDiscReport(btn) {
   try {
     var today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
-    // فلتر الشهر — لو اختار المستخدم شهر معين
-    var monEl = document.getElementById('rdisc-month');
-    var filterMon = monEl ? (monEl.value||'').slice(0,7) : '';
-    var monStart = filterMon ? filterMon+'-01' : null;
-    var monEnd   = filterMon ? window.monthEnd(filterMon) : null;
-
-    var query = sb.from('unit_discounts')
+    var { data: discounts, error } = await sb.from('unit_discounts')
       .select('id,unit_id,apartment,room,discount_amount,start_date,end_date,reason')
       .order('apartment').order('room').order('start_date');
-
-    // لو في فلتر شهر — جيب الخصومات النشطة في الشهر ده بس
-    if(monStart && monEnd) {
-      query = query.lte('start_date', monEnd).gte('end_date', monStart);
-    }
-
-    var { data: discounts, error } = await query;
     if(error) throw error;
 
     var discounts = discounts || [];
     var out = document.getElementById('rDiscOut');
     if(!discounts.length) {
       out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px">'+
-        (filterMon ? 'لا توجد خصومات في '+filterMon : (LANG==='ar'?'لا توجد خصومات مسجّلة':'No discounts found'))+'</div>';
+        (LANG==='ar'?'لا توجد خصومات مسجّلة':'No discounts found')+'</div>';
       return;
     }
 
-    // تقسيم لنشط وسابق (بالنسبة لليوم الحالي أو الشهر المختار)
-    var refDate = monEnd || today;
-    var refStart = monStart || today;
-    var active  = discounts.filter(function(d){ return d.end_date >= today; });
+    // تقسيم لنشط وسابق
+    var active = discounts.filter(function(d){ return d.end_date >= today; });
     var expired = discounts.filter(function(d){ return d.end_date < today; });
 
-    var totalActive  = active.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
+    var totalActive = active.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
     var totalExpired = expired.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
-    var totalFiltered = discounts.reduce(function(s,d){ return s+(d.discount_amount||0); }, 0);
 
     // تجميع بالشقة
     var aptMap = {};
@@ -1762,17 +1777,7 @@ async function loadDiscReport(btn) {
         +'</tr>';
     }
 
-    var html = '';
-
-    // لو في فلتر شهر — اعرض إجمالي الشهر
-    if(filterMon) {
-      html += '<div style="background:var(--amber)15;border:1px solid var(--amber)44;border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">'
-        +'<div><div style="font-size:.65rem;color:var(--muted)">إجمالي خصومات '+filterMon+'</div>'
-        +'<div style="font-weight:800;color:var(--amber);font-size:1rem">'+discounts.length+' خصم</div></div>'
-        +'<div style="font-weight:900;color:var(--amber);font-size:1.3rem">'+totalFiltered.toLocaleString()+' AED</div></div>';
-    }
-
-    html += '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">'
+    var html = '<div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">'
       +'<div style="background:var(--green)15;border:1px solid var(--green)33;border-radius:10px;padding:10px 16px;flex:1;min-width:120px">'
       +'<div style="font-size:.65rem;color:var(--muted)">'+(LANG==='ar'?'خصومات نشطة':'Active Discounts')+'</div>'
       +'<div style="font-weight:900;color:var(--green);font-size:1.1rem">'+active.length+' <span style="font-size:.75rem">خصم</span></div>'
