@@ -2205,8 +2205,12 @@ async function loadVacantHistoricalReport(btn) {
       };
     });
 
-    // رتّب: الأطول شغوراً أولاً
-    results.sort(function(a,b) { return b.daysVacant - a.daysVacant; });
+    // رتّب: حسب الشقة ثم الغرفة
+    results.sort(function(a,b){
+      var an=Number(a.apartment)||0, bn=Number(b.apartment)||0;
+      if(an!==bn) return an-bn;
+      return (Number(a.room)||0)-(Number(b.room)||0);
+    });
 
     var out = document.getElementById('rVacantOut');
     if(!out) { toast('rVacantOut not found','err'); return; }
@@ -2216,57 +2220,91 @@ async function loadVacantHistoricalReport(btn) {
       return;
     }
 
-    // ملخص
-    var totalLostRent = results.reduce(function(s,r){ return s + r.lastRent; }, 0);
-    var oldest = results[0];
-    var newest = results.slice().sort(function(a,b){ return (a.vacantSince||'') > (b.vacantSince||'') ? 1:-1; })[0];
+    var totalLostRent = results.reduce(function(s,r){ return s+r.lastRent; },0);
     var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
 
+    // تجميع بالشقق والأدوار
+    var apts = {};
+    results.forEach(function(r){
+      var apt = String(r.apartment);
+      if(!apts[apt]) apts[apt]={units:[],rent:0};
+      apts[apt].units.push(r);
+      apts[apt].rent += r.lastRent||0;
+    });
+    var floors = {};
+    Object.keys(apts).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(apt){
+      var fl = String(Math.floor(Number(apt)/100));
+      if(!floors[fl]) floors[fl]={apts:[],count:0,rent:0};
+      floors[fl].apts.push(apt);
+      floors[fl].count += apts[apt].units.length;
+      floors[fl].rent  += apts[apt].rent;
+    });
+
+    // ملخص عام
     var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
       +'<div style="background:var(--red)15;border:1px solid var(--red)33;border-radius:10px;padding:12px;text-align:center">'
-      +'<div style="font-size:1.6rem;font-weight:800;color:var(--red)">'+results.length+'</div>'
-      +'<div style="font-size:.68rem;color:var(--muted)">وحدة شاغرة</div></div>'
+      +'<div style="font-size:1.8rem;font-weight:800;color:var(--red)">'+results.length+'</div>'
+      +'<div style="font-size:.68rem;color:var(--muted)">إجمالي وحدات شاغرة</div></div>'
       +'<div style="background:var(--amber)15;border:1px solid var(--amber)33;border-radius:10px;padding:12px;text-align:center">'
-      +'<div style="font-size:1.3rem;font-weight:800;color:var(--amber)">'+totalLostRent.toLocaleString()+'</div>'
-      +'<div style="font-size:.68rem;color:var(--muted)">إيجار ضائع (AED)</div></div>'
-      +'<div style="background:var(--surf2);border-radius:10px;padding:10px 12px">'
-      +'<div style="font-size:.65rem;color:var(--muted)">أطول شغور</div>'
-      +'<div style="font-size:.82rem;font-weight:700">شقة '+esc(String(oldest.apartment))+'–'+esc(String(oldest.room))+'</div>'
-      +'<div style="font-size:.7rem;color:var(--red)">'+oldest.daysVacant+' يوم</div></div>'
-      +'<div style="background:var(--surf2);border-radius:10px;padding:10px 12px">'
-      +'<div style="font-size:.65rem;color:var(--muted)">أحدث شغور</div>'
-      +'<div style="font-size:.82rem;font-weight:700">شقة '+esc(String(newest.apartment))+'–'+esc(String(newest.room))+'</div>'
-      +'<div style="font-size:.7rem;color:var(--amber)">'+(newest.vacantSince||'—')+'</div></div>'
+      +'<div style="font-size:1.4rem;font-weight:800;color:var(--amber)">'+totalLostRent.toLocaleString()+'</div>'
+      +'<div style="font-size:.68rem;color:var(--muted)">إجمالي الإيجار الضائع (AED)</div></div>'
       +'</div>';
 
     html += '<button onclick="exportVacantPDF(\''+monYM+'\')" style="width:100%;padding:11px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:14px">📄 PDF</button>';
 
-    // جدول
-    html += '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">';
-    results.forEach(function(r, i){
-      var bg = i%2===0 ? '' : 'background:var(--surf2);';
-      var daysColor = r.daysVacant > 90 ? 'var(--red)' : r.daysVacant > 30 ? 'var(--amber)' : 'var(--muted)';
-      html += '<div style="padding:11px 14px;border-bottom:1px solid var(--border)22;'+bg+'">'
-        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
-        +'<div>'
-        +'<div style="font-size:.88rem;font-weight:700">شقة '+esc(String(r.apartment))+'–'+esc(String(r.room))+'</div>'
-        +'<div style="font-size:.75rem;color:var(--muted);margin-top:2px">آخر مستأجر: <b style="color:var(--text)">'+esc(r.lastTenant)+'</b></div>'
-        +(r.startDate!=='—'?'<div style="font-size:.68rem;color:var(--muted)">فترة: '+r.startDate+' → '+r.endDate+'</div>':'')
-        +'</div>'
-        +'<div style="text-align:end">'
-        +(r.lastRent>0?'<div style="font-size:.78rem;color:var(--muted)">آخر إيجار: <b>'+r.lastRent.toLocaleString()+' AED</b></div>':'')
-        +'<div style="font-size:.85rem;font-weight:800;color:'+daysColor+'">'+r.daysVacant+' يوم</div>'
-        +'<div style="font-size:.65rem;color:var(--muted)">شاغرة منذ: '+(r.vacantSince||'—')+'</div>'
-        +'</div>'
-        +'</div>'
-        +'</div>';
-    });
-    html += '</div>';
+    // عرض حسب الأدوار والشقق
+    Object.keys(floors).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(fl){
+      var fg = floors[fl];
+      html += '<div style="background:var(--accent)22;border-right:4px solid var(--accent);border-radius:10px;padding:9px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+        +'<span style="font-size:.9rem;font-weight:800">🏬 الدور '+fl+'</span>'
+        +'<span style="font-size:.78rem;display:flex;gap:10px">'
+        +'<span style="color:var(--red);font-weight:700">'+fg.count+' وحدة شاغرة</span>'
+        +'<span style="color:var(--amber);font-weight:700">'+fg.rent.toLocaleString()+' AED</span>'
+        +'</span></div>';
 
-    // حفظ للـ PDF
+      fg.apts.forEach(function(apt){
+        var g = apts[apt];
+        html += '<div style="margin-bottom:10px;margin-right:8px">'
+          +'<div style="background:var(--surf2);border-radius:10px 10px 0 0;padding:7px 12px;border-right:3px solid var(--red);display:flex;justify-content:space-between;align-items:center">'
+          +'<span style="font-weight:700;font-size:.82rem">🏢 شقة '+apt+'</span>'
+          +'<span style="font-size:.75rem;display:flex;gap:8px">'
+          +'<span style="color:var(--red)">'+g.units.length+' شاغرة</span>'
+          +'<span style="color:var(--amber);font-weight:700">'+g.rent.toLocaleString()+' AED</span>'
+          +'</span></div>'
+          +'<div style="border:1px solid var(--border);border-top:none;border-radius:0 0 10px 10px">';
+        g.units.forEach(function(r){
+          var daysColor = r.daysVacant>90?'var(--red)':r.daysVacant>30?'var(--amber)':'var(--muted)';
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;border-bottom:1px solid var(--border)22">'
+            +'<div>'
+            +'<div style="font-size:.82rem;font-weight:700">غرفة '+esc(String(r.room))+'</div>'
+            +'<div style="font-size:.72rem;color:var(--muted)">آخر مستأجر: <b style="color:var(--text)">'+esc(r.lastTenant)+'</b></div>'
+            +(r.endDate!=='—'?'<div style="font-size:.65rem;color:var(--muted)">خرج: '+r.endDate+'</div>':'')
+            +'</div>'
+            +'<div style="text-align:end">'
+            +(r.lastRent>0?'<div style="font-size:.75rem;color:var(--muted)">'+r.lastRent.toLocaleString()+' AED</div>':'')
+            +'<div style="font-size:.78rem;font-weight:800;color:'+daysColor+'">'+r.daysVacant+' يوم</div>'
+            +'</div></div>';
+        });
+        html += '</div></div>';
+      });
+
+      html += '<div style="background:var(--surf2);border-radius:10px;padding:8px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-size:.8rem;border-right:4px solid var(--red)">'
+        +'<span style="font-weight:800">إجمالي الدور '+fl+'</span>'
+        +'<span style="display:flex;gap:12px">'
+        +'<span style="color:var(--red);font-weight:700">'+fg.count+' وحدة</span>'
+        +'<span style="color:var(--amber);font-weight:700">'+fg.rent.toLocaleString()+' AED</span>'
+        +'</span></div>';
+    });
+
+    html += '<div style="background:var(--red);border-radius:12px;padding:14px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">'
+      +'<span style="font-weight:800;font-size:.95rem;color:#fff">🏚️ إجمالي الشاغر</span>'
+      +'<div style="text-align:end">'
+      +'<div style="font-size:1rem;font-weight:800;color:#fff">'+results.length+' وحدة</div>'
+      +'<div style="font-size:.85rem;color:#ffdddd">'+totalLostRent.toLocaleString()+' AED</div>'
+      +'</div></div>';
+
     window._vacantResults = results;
     window._vacantMonYM   = monYM;
-
     out.innerHTML = html;
   } catch(e) {
     toast('خطأ: '+e.message,'err');
