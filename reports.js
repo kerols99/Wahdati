@@ -2398,6 +2398,7 @@ async function exportVacantPDF(monYM) {
   }).join('');
 
   document.getElementById('pdf-content').innerHTML =
+    '<style>@media print{table{page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}thead{display:table-header-group}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'+
     '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
     +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
     +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير الوحدات الشاغرة التاريخي</div>'
