@@ -1286,6 +1286,54 @@ async function exportPDF(type, mon) {
       +'</div>'
       +'</div>';
 
+
+    // ── جدول المقارنة في الـ PDF ──
+    var _pdfCashRent = 0, _pdfCashDeps = 0, _pdfCashRef = 0;
+    try {
+      var [_cr, _cd, _cref] = await Promise.all([
+        sb.from('rent_payments').select('amount').gte('payment_date', monYM+'-01').lte('payment_date', window.monthEnd(monYM)),
+        sb.from('deposits').select('amount,status,refund_date,deposit_received_date').gte('deposit_received_date', monYM+'-01').lte('deposit_received_date', window.monthEnd(monYM)),
+        sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date', monYM+'-01').lte('refund_date', window.monthEnd(monYM))
+      ]);
+      _pdfCashRent = (_cr.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
+      _pdfCashDeps = (_cd.data||[]).reduce(function(s,d){
+        var r=String(d.deposit_received_date||'').slice(0,10), rf=String(d.refund_date||'').slice(0,10);
+        if(r&&rf&&r===rf&&Number(d.refund_amount||0)>0) return s;
+        return s+Number(d.amount||0);
+      },0);
+      _pdfCashRef = (_cref.data||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
+    } catch(_e){}
+    var _pdfAccrNet = totalRentColl + totalDeps - totalRefunds;
+    var _pdfCashNet = _pdfCashRent + _pdfCashDeps - _pdfCashRef;
+    var _pdfDiffRow = function(label, accrVal, cashVal) {
+      var diff = cashVal - accrVal;
+      var col  = diff>0?'#1a7a4a':diff<0?'#c0392b':'#666';
+      var arr  = diff>0?'↑':diff<0?'↓':'—';
+      return '<tr>'
+        +'<td style="padding:5px 8px;border:1px solid #ddd;font-size:11px">'+label+'</td>'
+        +'<td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:center">'+accrVal.toLocaleString()+'</td>'
+        +'<td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:center">'+cashVal.toLocaleString()+'</td>'
+        +'<td style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:center;font-weight:700;color:'+col+'">'
+        +(diff!==0?arr+' '+Math.abs(diff).toLocaleString():'—')+'</td>'
+        +'</tr>';
+    };
+    var _pdfCompare = '<div style="margin-top:16px;border-top:2px solid #333;padding-top:12px">'
+      +'<div style="font-size:11px;font-weight:700;color:#333;margin-bottom:8px">📊 مقارنة الاستحقاق والتحصيل الفعلي</div>'
+      +'<table style="width:100%;border-collapse:collapse;margin-bottom:6px">'
+      +'<thead><tr style="background:#f0f0f0">'
+      +'<th style="padding:6px 8px;border:1px solid #ccc;font-size:11px;text-align:right">البند</th>'
+      +'<th style="padding:6px 8px;border:1px solid #ccc;font-size:10px;text-align:center">استحقاق</th>'
+      +'<th style="padding:6px 8px;border:1px solid #ccc;font-size:10px;text-align:center">فعلي</th>'
+      +'<th style="padding:6px 8px;border:1px solid #ccc;font-size:10px;text-align:center">الفرق</th>'
+      +'</tr></thead><tbody>'
+      +_pdfDiffRow('الإيجار', totalRentColl, _pdfCashRent)
+      +_pdfDiffRow('التأمينات المستلمة', totalDeps, _pdfCashDeps)
+      +_pdfDiffRow('التأمينات المرتجعة', totalRefunds, _pdfCashRef)
+      +_pdfDiffRow('إجمالي الكاش', _pdfAccrNet, _pdfCashNet)
+      +'</tbody></table>'
+      +'<div style="font-size:9px;color:#888">💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.</div>'
+      +'</div>';
+    document.getElementById('pdf-content').innerHTML += _pdfCompare;
     document.getElementById('pdfOverlay').style.display='flex';
   } catch(e){ toast('خطأ PDF: '+e.message,'err'); console.error('exportPDF:',e); }
 }
