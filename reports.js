@@ -2397,9 +2397,17 @@ async function exportVacantPDF(monYM) {
       +'</tr>';
   }).join('');
 
-  document.getElementById('pdf-content').innerHTML =
-    '<style>@media print{table{page-break-inside:auto}tr{page-break-inside:avoid;page-break-after:auto}thead{display:table-header-group}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'+
-    '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
+  // فتح نافذة طباعة مستقلة بدل pdfOverlay عشان يظهر كامل
+  var printHTML = '<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8">'
+    +'<title>تقرير الوحدات الشاغرة</title>'
+    +'<style>'
+    +'body{font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111;margin:0}'
+    +'table{width:100%;border-collapse:collapse;page-break-inside:auto}'
+    +'tr{page-break-inside:avoid;page-break-after:auto}'
+    +'thead{display:table-header-group}'
+    +'tfoot{display:table-footer-group}'
+    +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
+    +'</style></head><body>'
     +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
     +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير الوحدات الشاغرة التاريخي</div>'
     +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
@@ -2409,7 +2417,7 @@ async function exportVacantPDF(monYM) {
     +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b07400">'+totalLostRent.toLocaleString()+'</div><div style="font-size:10px;color:#555">إيجار ضائع (AED)</div></div>'
     +'<div style="background:#f5f5f5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#333">'+results[0].daysVacant+'</div><div style="font-size:10px;color:#555">أطول شغور (يوم)</div></div>'
     +'</div>'
-    +'<table style="width:100%;border-collapse:collapse">'
+    +'<table>'
     +'<thead><tr style="background:#1a3a6a;color:#fff">'
     +'<th style="padding:7px 8px;text-align:right;font-size:11px">شقة</th>'
     +'<th style="padding:7px 8px;text-align:right;font-size:11px">غرفة</th>'
@@ -2423,9 +2431,16 @@ async function exportVacantPDF(monYM) {
     +'<td colspan="5" style="padding:7px 8px;border:1px solid #ddd;text-align:right">الإجمالي</td>'
     +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center">'+totalLostRent.toLocaleString()+' AED</td>'
     +'<td style="border:1px solid #ddd"></td>'
-    +'</tr></tfoot></table></div>';
-  document.getElementById('pdfOverlay').style.display='flex';
+    +'</tr></tfoot></table>'
+    +'</body></html>';
+
+  var w = window.open('', '_blank');
+  w.document.open();
+  w.document.write(printHTML);
+  w.document.close();
+  setTimeout(function(){ try{ w.print(); }catch(_e){} }, 400);
 }
+
 
 window.loadVacantHistoricalReport = loadVacantHistoricalReport;
 window.exportVacantPDF = exportVacantPDF;
