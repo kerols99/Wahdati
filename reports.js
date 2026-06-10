@@ -2212,6 +2212,12 @@ async function loadVacantHistoricalReport(btn) {
       return (Number(a.room)||0)-(Number(b.room)||0);
     });
 
+    // تصنيف الوحدات لـ 3 مجموعات
+    var reallyVacant   = results.filter(function(r){ return r.daysVacant > 0; });
+    var endOfMonthExit = results.filter(function(r){ return r.daysVacant === 0 && r.lastTenant !== 'No Previous Tenant'; });
+    var neverOccupied  = results.filter(function(r){ return r.lastTenant === 'No Previous Tenant'; });
+
+
     var out = document.getElementById('rVacantOut');
     if(!out) { toast('rVacantOut not found','err'); return; }
 
@@ -2296,11 +2302,71 @@ async function loadVacantHistoricalReport(btn) {
         +'</span></div>';
     });
 
-    html += '<div style="background:var(--red);border-radius:12px;padding:14px;display:flex;justify-content:space-between;align-items:center;margin-top:4px">'
-      +'<span style="font-weight:800;font-size:.95rem;color:#fff">🏚️ إجمالي الشاغر</span>'
-      +'<div style="text-align:end">'
-      +'<div style="font-size:1rem;font-weight:800;color:#fff">'+results.length+' وحدة</div>'
-      +'<div style="font-size:.85rem;color:#ffdddd">'+totalLostRent.toLocaleString()+' AED</div>'
+    // ── قسم خروج آخر الشهر ──
+    if(endOfMonthExit.length) {
+      var endRent = endOfMonthExit.reduce(function(s,r){return s+r.lastRent;},0);
+      html += '<div style="margin-top:16px;border-top:2px dashed var(--border);padding-top:12px">'
+        +'<div style="background:var(--amber)22;border-right:4px solid var(--amber);border-radius:10px;padding:9px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+        +'<div><div style="font-size:.85rem;font-weight:800;color:var(--amber)">📤 خروج آخر الشهر</div>'
+        +'<div style="font-size:.68rem;color:var(--muted)">غادروا في نهاية الشهر — محتاجة تسويق للشهر الجاي</div></div>'
+        +'<div style="text-align:end">'
+        +'<div style="font-weight:800;color:var(--amber)">'+endOfMonthExit.length+' وحدة</div>'
+        +'<div style="font-size:.78rem;color:var(--amber)">'+endRent.toLocaleString()+' AED</div>'
+        +'</div></div>';
+
+      // تجميع بالشقق
+      var endApts = {};
+      endOfMonthExit.forEach(function(r){
+        var apt=String(r.apartment);
+        if(!endApts[apt]) endApts[apt]=[];
+        endApts[apt].push(r);
+      });
+      Object.keys(endApts).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(apt){
+        endApts[apt].forEach(function(r){
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 14px;border-bottom:1px solid var(--border)22">'
+            +'<div><span style="font-size:.82rem;font-weight:700">شقة '+apt+' – غرفة '+r.room+'</span>'
+            +'<span style="font-size:.7rem;color:var(--muted);margin-right:6px"> '+r.lastTenant+'</span></div>'
+            +(r.lastRent>0?'<span style="font-size:.78rem;color:var(--amber);font-weight:700">'+r.lastRent.toLocaleString()+' AED</span>':'')
+            +'</div>';
+        });
+      });
+      html += '</div>';
+    }
+
+    // ── لا يوجد مستأجر سابق ──
+    if(neverOccupied.length) {
+      html += '<div style="margin-top:12px">'
+        +'<div style="background:var(--surf2);border-right:4px solid var(--muted);border-radius:10px;padding:9px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">'
+        +'<div><div style="font-size:.85rem;font-weight:800;color:var(--muted)">🔲 لم يسكنها أحد</div>'
+        +'<div style="font-size:.68rem;color:var(--muted)">No Previous Tenant</div></div>'
+        +'<div style="font-weight:800;color:var(--muted)">'+neverOccupied.length+' وحدة</div>'
+        +'</div>';
+      neverOccupied.forEach(function(r){
+        html += '<div style="display:flex;justify-content:space-between;padding:6px 14px;border-bottom:1px solid var(--border)22">'
+          +'<span style="font-size:.8rem;color:var(--muted)">شقة '+r.apartment+' – غرفة '+r.room+'</span>'
+          +'<span style="font-size:.72rem;color:var(--muted)">—</span>'
+          +'</div>';
+      });
+      html += '</div>';
+    }
+
+    // ── الإجمالي النهائي ──
+    var realRent = reallyVacant.reduce(function(s,r){return s+r.lastRent;},0);
+    var endRentTotal = endOfMonthExit.reduce(function(s,r){return s+r.lastRent;},0);
+    html += '<div style="margin-top:12px;border:1.5px solid var(--border);border-radius:12px;overflow:hidden">'
+      +'<div style="padding:9px 14px;background:var(--surf2);font-weight:800;font-size:.85rem;border-bottom:1px solid var(--border)">📊 ملخص الشغور</div>'
+      +'<div style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border)22">'
+      +'<span style="font-size:.78rem;color:var(--muted)">🏚️ شاغرة فعلاً (قبل آخر الشهر)</span>'
+      +'<span style="font-weight:700;color:var(--red)">'+reallyVacant.length+' | '+realRent.toLocaleString()+' AED</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border)22">'
+      +'<span style="font-size:.78rem;color:var(--muted)">📤 خروج آخر الشهر</span>'
+      +'<span style="font-weight:700;color:var(--amber)">'+endOfMonthExit.length+' | '+endRentTotal.toLocaleString()+' AED</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border)22">'
+      +'<span style="font-size:.78rem;color:var(--muted)">🔲 لم يسكنها أحد</span>'
+      +'<span style="font-weight:700;color:var(--muted)">'+neverOccupied.length+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;padding:10px 14px;background:var(--red)22">'
+      +'<span style="font-weight:800;font-size:.88rem;color:var(--red)">الإجمالي الكلي</span>'
+      +'<span style="font-weight:800;color:var(--red)">'+results.length+' وحدة | '+totalLostRent.toLocaleString()+' AED</span>'
       +'</div></div>';
 
     window._vacantResults = results;
