@@ -2118,3 +2118,210 @@ window.loadRefundedDepsReport = loadRefundedDepsReport;
 window.exportRefundedDepsPDF  = exportRefundedDepsPDF;
 window.loadDepDeductionsReport = loadDepDeductionsReport;
 window.exportDepDeductionsPDF  = exportDepDeductionsPDF;
+
+// ══════════════════════════════════════════════════════
+// VACANT UNITS HISTORICAL REPORT
+// وحدات كانت شاغرة طول الشهر المختار (مش فيها مستأجر خالص)
+// ══════════════════════════════════════════════════════
+async function loadVacantHistoricalReport(btn) {
+  var monEl = document.getElementById('rvacant-month');
+  if(!monEl || !monEl.value) { toast(LANG==='ar'?'اختر الشهر':'Choose month','err'); return; }
+  var monYM    = monEl.value.slice(0,7);
+  var monStart = monYM+'-01';
+  var monEnd   = window.monthEnd(monYM);
+  var orig = btn ? btn.innerHTML : '';
+  if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+
+  try {
+    var [unitsRes, histRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,monthly_rent,is_vacant,unit_status,start_date,tenant_name'),
+      sb.from('unit_history').select('unit_id,apartment,room,tenant_name,monthly_rent,start_date,end_date,snapshot_type')
+        .order('end_date', {ascending: false})
+    ]);
+
+    var allUnits = unitsRes.data||[];
+    var hist     = histRes.data||[];
+
+    // Month-End Vacancy Snapshot:
+    // وحدة شاغرة في نهاية الشهر = مفيش مستأجر نشط في monEnd
+    // مستأجر نشط في monEnd = start_date <= monEnd ومش خرج قبل أو في monEnd
+
+    var vacantUnits = [];
+
+    allUnits.forEach(function(u) {
+      var isOccupiedNow = !u.is_vacant && u.unit_status !== 'available' && u.unit_status !== 'maintenance';
+
+      // المستأجر الحالي نشط في monEnd لو دخل قبله أو فيه
+      if(isOccupiedNow && u.start_date && u.start_date <= monEnd) {
+        return; // مشغولة في نهاية الشهر — استبعد
+      }
+
+      // شوف لو في مستأجر من unit_history نشط في monEnd
+      // نشط = start_date <= monEnd وend_date > monEnd (لسه موجود)
+      var activeTenantAtMonEnd = hist.some(function(h) {
+        if(h.unit_id !== u.id) return false;
+        if(h.snapshot_type === 'rent_change' || h.snapshot_type === 'internal_transfer_in') return false;
+        var hStart = h.start_date || '2000-01-01';
+        var hEnd   = h.end_date   || '9999-12-31';
+        // نشط في monEnd = دخل قبل أو في monEnd وخرج بعده
+        return hStart <= monEnd && hEnd > monEnd;
+      });
+
+      if(!activeTenantAtMonEnd) {
+        vacantUnits.push(u);
+      }
+    });
+
+    // لكل وحدة شاغرة — ابحث عن آخر مستأجر (end_date <= monEnd)
+    var results = vacantUnits.map(function(u) {
+      // آخر مستأجر خرج قبل أو في monEnd
+      var prevTenants = hist.filter(function(h) {
+        if(h.unit_id !== u.id) return false;
+        if(h.snapshot_type === 'rent_change') return false;
+        return (h.end_date||'') <= monEnd;
+      }).sort(function(a,b) {
+        return (b.end_date||'') > (a.end_date||'') ? 1 : -1;
+      });
+
+      var lastTenant  = prevTenants[0] || null;
+      var vacantSince = lastTenant ? lastTenant.end_date : null;
+      var daysVacant  = 0;
+      if(vacantSince) {
+        var d1 = new Date(vacantSince);
+        var d2 = new Date(monEnd);
+        daysVacant = Math.max(0, Math.round((d2-d1)/(1000*60*60*24)));
+      }
+
+      return {
+        id:          u.id,
+        apartment:   u.apartment,
+        room:        u.room,
+        lastTenant:  lastTenant ? (lastTenant.tenant_name||'—') : 'No Previous Tenant',
+        startDate:   lastTenant ? (lastTenant.start_date||'—') : '—',
+        endDate:     lastTenant ? (lastTenant.end_date||'—')   : '—',
+        lastRent:    lastTenant ? (lastTenant.monthly_rent||0) : 0,
+        daysVacant:  daysVacant,
+        vacantSince: vacantSince
+      };
+    });
+
+    // رتّب: الأطول شغوراً أولاً
+    results.sort(function(a,b) { return b.daysVacant - a.daysVacant; });
+
+    var out = document.getElementById('rVacantOut');
+    if(!out) { toast('rVacantOut not found','err'); return; }
+
+    if(!results.length) {
+      out.innerHTML = '<div style="text-align:center;color:var(--muted);padding:30px">لا توجد وحدات شاغرة في '+monYM+'</div>';
+      return;
+    }
+
+    // ملخص
+    var totalLostRent = results.reduce(function(s,r){ return s + r.lastRent; }, 0);
+    var oldest = results[0];
+    var newest = results.slice().sort(function(a,b){ return (a.vacantSince||'') > (b.vacantSince||'') ? 1:-1; })[0];
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
+      +'<div style="background:var(--red)15;border:1px solid var(--red)33;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:1.6rem;font-weight:800;color:var(--red)">'+results.length+'</div>'
+      +'<div style="font-size:.68rem;color:var(--muted)">وحدة شاغرة</div></div>'
+      +'<div style="background:var(--amber)15;border:1px solid var(--amber)33;border-radius:10px;padding:12px;text-align:center">'
+      +'<div style="font-size:1.3rem;font-weight:800;color:var(--amber)">'+totalLostRent.toLocaleString()+'</div>'
+      +'<div style="font-size:.68rem;color:var(--muted)">إيجار ضائع (AED)</div></div>'
+      +'<div style="background:var(--surf2);border-radius:10px;padding:10px 12px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">أطول شغور</div>'
+      +'<div style="font-size:.82rem;font-weight:700">شقة '+esc(String(oldest.apartment))+'–'+esc(String(oldest.room))+'</div>'
+      +'<div style="font-size:.7rem;color:var(--red)">'+oldest.daysVacant+' يوم</div></div>'
+      +'<div style="background:var(--surf2);border-radius:10px;padding:10px 12px">'
+      +'<div style="font-size:.65rem;color:var(--muted)">أحدث شغور</div>'
+      +'<div style="font-size:.82rem;font-weight:700">شقة '+esc(String(newest.apartment))+'–'+esc(String(newest.room))+'</div>'
+      +'<div style="font-size:.7rem;color:var(--amber)">'+(newest.vacantSince||'—')+'</div></div>'
+      +'</div>';
+
+    html += '<button onclick="exportVacantPDF(\''+monYM+'\')" style="width:100%;padding:11px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:14px">📄 PDF</button>';
+
+    // جدول
+    html += '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">';
+    results.forEach(function(r, i){
+      var bg = i%2===0 ? '' : 'background:var(--surf2);';
+      var daysColor = r.daysVacant > 90 ? 'var(--red)' : r.daysVacant > 30 ? 'var(--amber)' : 'var(--muted)';
+      html += '<div style="padding:11px 14px;border-bottom:1px solid var(--border)22;'+bg+'">'
+        +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        +'<div>'
+        +'<div style="font-size:.88rem;font-weight:700">شقة '+esc(String(r.apartment))+'–'+esc(String(r.room))+'</div>'
+        +'<div style="font-size:.75rem;color:var(--muted);margin-top:2px">آخر مستأجر: <b style="color:var(--text)">'+esc(r.lastTenant)+'</b></div>'
+        +(r.startDate!=='—'?'<div style="font-size:.68rem;color:var(--muted)">فترة: '+r.startDate+' → '+r.endDate+'</div>':'')
+        +'</div>'
+        +'<div style="text-align:end">'
+        +(r.lastRent>0?'<div style="font-size:.78rem;color:var(--muted)">آخر إيجار: <b>'+r.lastRent.toLocaleString()+' AED</b></div>':'')
+        +'<div style="font-size:.85rem;font-weight:800;color:'+daysColor+'">'+r.daysVacant+' يوم</div>'
+        +'<div style="font-size:.65rem;color:var(--muted)">شاغرة منذ: '+(r.vacantSince||'—')+'</div>'
+        +'</div>'
+        +'</div>'
+        +'</div>';
+    });
+    html += '</div>';
+
+    // حفظ للـ PDF
+    window._vacantResults = results;
+    window._vacantMonYM   = monYM;
+
+    out.innerHTML = html;
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    console.error('loadVacantHistoricalReport:', e);
+  } finally {
+    if(btn) { btn.disabled=false; btn.innerHTML=orig; }
+  }
+}
+
+async function exportVacantPDF(monYM) {
+  var results = window._vacantResults || [];
+  if(!results.length) { toast('لا بيانات للطباعة','err'); return; }
+  var totalLostRent = results.reduce(function(s,r){ return s+r.lastRent; },0);
+  var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+  var rows = results.map(function(r){
+    return '<tr>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(String(r.apartment))+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(String(r.room))+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd">'+esc(r.lastTenant)+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:11px">'+esc(r.startDate)+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:11px">'+esc(r.endDate)+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center">'+r.lastRent.toLocaleString()+'</td>'
+      +'<td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-weight:700;color:'+(r.daysVacant>90?'#c0392b':r.daysVacant>30?'#b07400':'#333')+'">'+r.daysVacant+'</td>'
+      +'</tr>';
+  }).join('');
+
+  document.getElementById('pdf-content').innerHTML =
+    '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
+    +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
+    +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير الوحدات الشاغرة التاريخي</div>'
+    +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
+    +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'
+    +'<div style="background:#ffeaea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#c0392b">'+results.length+'</div><div style="font-size:10px;color:#555">وحدة شاغرة</div></div>'
+    +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b07400">'+totalLostRent.toLocaleString()+'</div><div style="font-size:10px;color:#555">إيجار ضائع (AED)</div></div>'
+    +'<div style="background:#f5f5f5;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#333">'+results[0].daysVacant+'</div><div style="font-size:10px;color:#555">أطول شغور (يوم)</div></div>'
+    +'</div>'
+    +'<table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr style="background:#1a3a6a;color:#fff">'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">شقة</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">غرفة</th>'
+    +'<th style="padding:7px 8px;text-align:right;font-size:11px">آخر مستأجر</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:10px">تاريخ الدخول</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:10px">تاريخ الخروج</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">آخر إيجار</th>'
+    +'<th style="padding:7px 8px;text-align:center;font-size:11px">أيام الشغور</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody>'
+    +'<tfoot><tr style="background:#f0f0f0;font-weight:700">'
+    +'<td colspan="5" style="padding:7px 8px;border:1px solid #ddd;text-align:right">الإجمالي</td>'
+    +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center">'+totalLostRent.toLocaleString()+' AED</td>'
+    +'<td style="border:1px solid #ddd"></td>'
+    +'</tr></tfoot></table></div>';
+  document.getElementById('pdfOverlay').style.display='flex';
+}
+
+window.loadVacantHistoricalReport = loadVacantHistoricalReport;
+window.exportVacantPDF = exportVacantPDF;
