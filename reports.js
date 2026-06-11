@@ -779,8 +779,9 @@ async function loadDepRpt(btn) {
         tenant: tenantVal,
         dep: d
       });
-      groups[apt].total += Number(d.amount || 0);
-      grandTotal += Number(d.amount || 0);
+      var _dispAmt = (d.status==='refunded'&&d.refund_amount>0)?Number(d.refund_amount):Number(d.amount||0);
+      groups[apt].total += _dispAmt;
+      grandTotal += _dispAmt;
     });
 
     var html = '';
@@ -809,6 +810,7 @@ async function loadDepRpt(btn) {
         var sCol = d.status==='held'?'var(--amber)':d.status==='refunded'?'var(--green)':'var(--red)';
         var sTxt = d.status==='held'?(LANG==='ar'?'محتجز':'Held')
                  : d.status==='refunded'?(LANG==='ar'?'مُرتجع':'Refunded')
+                 : d.status==='partial_refund'?(LANG==='ar'?'استرداد جزئي':'Partial Refund')
                  : (LANG==='ar'?'مُصادر':'Forfeited');
         var rdStr = (d.deposit_received_date||'').slice(0,10);
         var unitText = (LANG==='ar'?'شقة ':'Apt ') + escapeHtml(String(item.apt||'—')) + ' — ' + (LANG==='ar'?'غرفة ':'Room ') + escapeHtml(String(item.room||'—'));
@@ -821,7 +823,7 @@ async function loadDepRpt(btn) {
           +(d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+escapeHtml(d.notes)+'</div>':'')
           +'</div>'
           +'<div style="text-align:left;min-width:84px">'
-          +'<div style="font-weight:700;color:var(--accent)">'+d.amount+' AED</div>'
+          +'<div style="font-weight:700;color:var(--accent)">'+(d.status==='refunded'&&d.refund_amount>0?d.refund_amount:d.amount)+' AED'+(d.status==='refunded'&&d.refund_amount>0&&d.refund_amount!==d.amount?' <span style="font-size:.65rem;color:var(--muted)">من '+d.amount+'</span>':'')+'</div>'
           +'<div style="font-size:.7rem;color:'+sCol+';font-weight:600">'+sTxt+'</div>'
           +(d.refund_amount>0 && d.status!=='refunded'?'<div style="font-size:.68rem;color:var(--red);font-weight:600">↩️ '+(LANG==='ar'?'مُرجَع:':'Refunded:')+' '+d.refund_amount+' AED</div>':'')
           +(d.refund_amount>0 && d.status!=='refunded'?'<div style="font-size:.65rem;color:var(--green);font-weight:600">'+(LANG==='ar'?'متبقي:':'Remaining:')+' '+(d.amount-d.refund_amount)+' AED</div>':'')
