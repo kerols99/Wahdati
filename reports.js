@@ -2013,7 +2013,7 @@ async function exportRefundedDepsPDF(monYM) {
     +'<td style="border:1px solid #ddd"></td>'
     +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#1a7a4a">'+totalRefund.toLocaleString()+'</td>'
     +'<td style="border:1px solid #ddd"></td>'
-    +'</tr></tfoot></table></div>';
+    +'</tr></tfoot></table></div>'
   );
 }
 
@@ -2121,7 +2121,7 @@ async function exportDepDeductionsPDF(monYM) {
     +'<td colspan="2" style="padding:7px 8px;border:1px solid #ddd;text-align:right">الإجمالي</td>'
     +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#c0392b">'+totalDed.toLocaleString()+' AED</td>'
     +'<td colspan="2" style="border:1px solid #ddd"></td>'
-    +'</tr></tfoot></table></div>';
+    +'</tr></tfoot></table></div>'
   );
 }
 
