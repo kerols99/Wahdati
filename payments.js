@@ -862,19 +862,56 @@ async function saveEditDeposit(depId) {
     var refAmt = Number(document.getElementById('ed-ref-back')
       ? document.getElementById('ed-ref-back').value||0
       : (amt - dedAmt));
+    var refundDate = (rdInput && rdInput.value) ? rdInput.value : new Date().toISOString().slice(0,10);
+
     if(status === 'refunded') {
-      updateData.refund_date = (rdInput && rdInput.value) ? rdInput.value : new Date().toISOString().slice(0,10);
-      updateData.refund_amount = amt; // كل التأمين رجع
-      updateData.deduction_amount = dedAmt;
+      // جيب السجل الحالي عشان نعرف لو فيه استرداد جزئي سابق
+      var { data: curDep } = await sb.from('deposits').select('refund_amount,refund_date,unit_id,apartment,room,tenant_name,deposit_received_date').eq('id', depId).single();
+      var prevRefund = Number((curDep && curDep.refund_amount)||0);
+      var prevRefundDate = (curDep && curDep.refund_date) ? curDep.refund_date.slice(0,10) : null;
+      var remainingRefund = refAmt; // المبلغ المُرجَع دلوقتي
+
+      if(prevRefund > 0 && prevRefundDate && prevRefundDate !== refundDate) {
+        // فيه استرداد جزئي سابق — نحفظ السجل الحالي كـ partial
+        // ونضيف سجل جديد للاسترداد النهائي
+        await sb.from('deposits').update({
+          refund_amount: prevRefund,
+          refund_date: prevRefundDate,
+          status: 'held',
+          deduction_amount: 0
+        }).eq('id', depId);
+
+        // سجل جديد للاسترداد النهائي
+        var { error: insErr } = await sb.from('deposits').insert({
+          unit_id: curDep.unit_id,
+          apartment: curDep.apartment,
+          room: curDep.room,
+          tenant_name: curDep.tenant_name,
+          amount: amt,
+          deposit_received_date: curDep.deposit_received_date,
+          status: 'refunded',
+          refund_amount: remainingRefund,
+          refund_date: refundDate,
+          deduction_amount: dedAmt,
+          notes: notes
+        });
+        if(insErr) throw insErr;
+      } else {
+        // أول استرداد مباشر — حدّث السجل نفسه
+        updateData.refund_date = refundDate;
+        updateData.refund_amount = amt;
+        updateData.deduction_amount = dedAmt;
+        var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
+        if(error) throw error;
+      }
     } else {
       // استرداد جزئي — held مع تسجيل المبلغ المُرجَع
-      updateData.refund_date = (rdInput && rdInput.value) ? rdInput.value : null;
+      updateData.refund_date = refundDate;
       updateData.refund_amount = refAmt;
       updateData.deduction_amount = dedAmt;
+      var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
+      if(error) throw error;
     }
-    var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
-
-    if(error) throw error;
     toast(LANG==='ar'?'تم التعديل ✓':'Updated ✓','ok');
     document.getElementById('edit-dep-modal').remove();
     // Refresh drawer
