@@ -819,6 +819,7 @@ async function loadDepRpt(btn) {
           +'<div style="font-size:.82rem;font-weight:600">'+unitText+'</div>'
           +'<div style="font-size:.76rem;color:var(--text)">'+escapeHtml(item.tenant||'—')+'</div>'
           +(rdStr?'<div style="font-size:.7rem;color:var(--muted)">📅 '+rdStr+'</div>':'')
+          +(d.refund_date&&d.status!=='held'?'<div style="font-size:.7rem;color:var(--green)">↩️ '+(d.refund_date||'').slice(0,10)+'</div>':'')
           +(d.deduction_amount?'<div style="font-size:.7rem;color:var(--muted)">'+(LANG==='ar'?'خصم:':'Ded:')+' '+d.deduction_amount+' AED</div>':'')
           +(d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+escapeHtml(d.notes)+'</div>':'')
           +'</div>'
