@@ -311,20 +311,26 @@ async function loadCollReport(btn) {
     var prevD = new Date(monYM+'-01'); prevD.setMonth(prevD.getMonth()-1);
     var prevYM = prevD.getFullYear()+'-'+String(prevD.getMonth()+1).padStart(2,'0');
 
-    var [paysRes, depsRes, expsRes, ownsRes, prevRes, unitsRes, refDepsRes] = await Promise.all([
+    var monStart = monYM+'-01';
+    var monEnd2  = monthEnd(monYM);
+
+    var [paysRes, depsRes, expsRes, ownsRes, prevRes, unitsRes, refDepsRes, histRes] = await Promise.all([
       sb.from('rent_payments')
         .select('unit_id,apartment,room,amount,payment_date,payment_method,payment_month,tenant_num')
-        .gte('payment_date',monYM+'-01').lte('payment_date',monthEnd(monYM)).order('apartment').order('room'),
+        .gte('payment_date',monStart).lte('payment_date',monEnd2).order('apartment').order('room'),
       sb.from('deposits')
         .select('unit_id,apartment,room,amount,deposit_received_date,tenant_name,status,refund_date')
-        .gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',monthEnd(monYM)),
-      sb.from('expenses').select('amount,category,description').eq('period_month', (monYM||'').slice(0,7)+'-01'),
+        .gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd2),
+      sb.from('expenses').select('amount,category,description').eq('period_month', monYM+'-01'),
       sb.from('owner_payments').select('amount').eq('period_month', monYM+'-01'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
-      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,monthly_rent').eq('is_vacant',false),
+      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,monthly_rent,start_date').eq('is_vacant',false),
       // Refunded deposits this month by refund_date
       sb.from('deposits').select('unit_id,apartment,room,amount,refund_amount,refund_date,tenant_name,deposit_received_date,status')
-        .gt('refund_amount', 0)
+        .gt('refund_amount', 0),
+      // unit_history عشان نعرف المستأجر الصح في الشهر المختار
+      sb.from('unit_history').select('unit_id,apartment,room,tenant_name,monthly_rent,start_date,end_date,snapshot_type')
+        .gte('end_date', monStart).lte('end_date', monEnd2+'-31')
     ]);
 
     var pays    = paysRes.data||[];
@@ -333,7 +339,30 @@ async function loadCollReport(btn) {
     var owns    = ownsRes.data||[];
     var prevC   = (prevRes.data||[]).reduce(function(s,p){return s+(p.amount||0);},0);
     var units   = unitsRes.data||[];
+    var hist    = (histRes.data||[]).filter(function(h){ return h.snapshot_type !== 'rent_change'; });
     var allRefCollData = refDepsRes.data||[];
+
+    // بناء خريطة المستأجر الصح في الشهر المختار لكل unit_id
+    // لو المستأجر الحالي دخل بعد الشهر — استخدم unit_history
+    var tenantInMonth = {};
+    units.forEach(function(u){
+      var startYM = (u.start_date||'').slice(0,7);
+      if(startYM <= monYM) {
+        tenantInMonth[u.id] = u.tenant_name || u.tenant_name2 || '—';
+      }
+    });
+    // مستأجرين من unit_history كانوا موجودين في الشهر
+    hist.forEach(function(h){
+      var endYM = (h.end_date||'').slice(0,7);
+      var startYM = (h.start_date||'').slice(0,7);
+      // كان موجود في الشهر لو دخل قبله وخرج في الشهر أو بعده
+      if(startYM <= monYM && endYM >= monYM) {
+        // لو الوحدة مش عندها مستأجر حالي في الشهر — حط المستأجر التاريخي
+        if(!tenantInMonth[h.unit_id]) {
+          tenantInMonth[h.unit_id] = h.tenant_name || '—';
+        }
+      }
+    });
     function refEffMonthColl(d) {
       var dt = (d.refund_date && d.refund_date !== '0001-01-01') ? d.refund_date : (d.deposit_received_date||'');
       return (dt||'').slice(0,7);
@@ -359,7 +388,7 @@ async function loadCollReport(btn) {
     var totalOwner = owns.reduce(function(s,o){return s+(o.amount||0);},0);
     var net        = totalCash - totalRefund - totalExp - totalOwner;
 
-    // Group payments by apartment
+    // Group payments by apartment — مع اسم المستأجر الصح في الشهر المختار
     var aptGroups = {};
     pays.forEach(function(p){
       var apt = String(p.apartment||'?');
@@ -367,13 +396,22 @@ async function loadCollReport(btn) {
       var room = String(p.room||'?');
       if(!aptGroups[apt].rooms[room]) {
         var u = unitMap[p.unit_id]||{};
+        // استخدم المستأجر الصح من tenantInMonth
+        var correctTenant = tenantInMonth[p.unit_id] || u.tenant_name || '—';
         aptGroups[apt].rooms[room] = {
           room:p.room, pays:[], total:0,
-          tenant: u.tenant_name||(p.tenant_num===2?(u.tenant_name2||'—'):'—'),
+          tenant: correctTenant,
           rent: u.monthly_rent||0
         };
       }
-      aptGroups[apt].rooms[room].pays.push(p);
+      // كل دفعة سطر منفصل — مش نجمعهم
+      aptGroups[apt].rooms[room].pays.push({
+        amount: p.amount||0,
+        payment_date: p.payment_date||'',
+        payment_month: (p.payment_month||'').slice(0,7),
+        is_advance: (p.payment_month||'').slice(0,7) > monYM,
+        is_late: (p.payment_month||'').slice(0,7) < monYM && (p.payment_month||'').slice(0,7) !== ''
+      });
       aptGroups[apt].rooms[room].total += p.amount||0;
       aptGroups[apt].total += p.amount||0;
     });
@@ -441,22 +479,27 @@ async function loadCollReport(btn) {
           var method   = r.pays.length>0?(r.pays[0].payment_method||''):'';
           var isPaid   = r.rent>0 && r.total>=r.rent;
 
-          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)22">'
-            // Status dot
+          // header الغرفة
+          html += '<div style="padding:9px 14px;border-bottom:1px solid var(--border)22;display:flex;align-items:center;gap:10px">'
             +'<div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:'+(isPaid?'var(--green)':r.total>0?'var(--amber)':'var(--red)')+'"></div>'
-            // Room + tenant
-            +'<div style="flex:1;min-width:0">'
-            +'<div style="font-size:.8rem;font-weight:600">غرفة '+r.room
+            +'<div style="flex:1;font-size:.82rem;font-weight:700">غرفة '+r.room
             +(r.tenant&&r.tenant!=='—'?' <span style="font-weight:400;color:var(--muted);font-size:.72rem">'+escapeHtml(r.tenant)+'</span>':'')
             +'</div>'
-            +(lastDate?'<div style="font-size:.67rem;color:var(--muted);margin-top:1px">📅 '+lastDate+(method?' · '+method:'')+'</div>':'')
-            +'</div>'
-            // Amount
-            +'<div style="text-align:end;flex-shrink:0">'
             +'<div style="font-weight:700;font-size:.85rem;color:var(--green)">'+r.total.toLocaleString()+' AED</div>'
-            +(r.rent>0?'<div style="font-size:.65rem;color:var(--muted)">من '+r.rent.toLocaleString()+'</div>':'')
-            +'</div>'
             +'</div>';
+
+          // كل دفعة على سطر منفصل
+          r.pays.forEach(function(pay){
+            var pmBadge = '';
+            if(pay.is_advance) pmBadge = '<span style="font-size:.6rem;background:var(--amber)22;color:var(--amber);border-radius:4px;padding:1px 5px;margin-right:4px">مقدمًا '+pay.payment_month+'</span>';
+            else if(pay.is_late) pmBadge = '<span style="font-size:.6rem;background:var(--red)22;color:var(--red);border-radius:4px;padding:1px 5px;margin-right:4px">متأخر '+pay.payment_month+'</span>';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 14px 5px 30px;border-bottom:1px solid var(--border)11">'
+              +'<div style="font-size:.7rem;color:var(--muted)">'
+              +pmBadge
+              +'📅 '+pay.payment_date.slice(0,10)+'</div>'
+              +'<div style="font-size:.78rem;font-weight:700;color:var(--green)">'+pay.amount.toLocaleString()+' AED</div>'
+              +'</div>';
+          });
         });
 
         html += '</div>';
