@@ -841,6 +841,13 @@ async function editDeposit(depId) {
 }
 
 async function saveEditDeposit(depId) {
+  // حماية من Double Submit
+  var saveBtn = document.querySelector('[onclick*="saveEditDeposit"]');
+  if(saveBtn) {
+    if(saveBtn.dataset.saving === '1') return;
+    saveBtn.dataset.saving = '1';
+    saveBtn.disabled = true;
+  }
   try {
     var amt   = Number(document.getElementById('ed-amt').value||0);
     var date  = document.getElementById('ed-date').value;
@@ -925,7 +932,11 @@ async function saveEditDeposit(depId) {
       var uid = drawer.querySelector('[data-uid]');
       if(uid) openDrawer(uid.dataset.uid);
     }
-  } catch(e){ toast('خطأ: '+e.message,'err'); }
+  } catch(e){
+    toast('خطأ: '+e.message,'err');
+    var saveBtn2 = document.querySelector('[onclick*="saveEditDeposit"]');
+    if(saveBtn2) { saveBtn2.dataset.saving = '0'; saveBtn2.disabled = false; }
+  }
 }
 
 async function deleteDeposit(depId, unitId) {

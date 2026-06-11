@@ -447,9 +447,10 @@ var now = new Date();
   var totalDepHeld = (depRows||[]).filter(function(d){return d.status!=='refunded';}).reduce(function(s,d){return s+((d.amount||0)-(d.refund_amount||0));},0);
   if((depRows||[]).length > 0) {
     var depRowsHTML = (depRows||[]).map(function(d) {
-      var sCol = d.status==='held'?'var(--amber)':d.status==='refunded'?'var(--green)':'var(--red)';
+      var sCol = d.status==='held'?'var(--amber)':d.status==='refunded'?'var(--green)':d.status==='partial_refund'?'var(--amber)':'var(--red)';
       var sTxt = d.status==='held'?(LANG==='ar'?'محتجز':'Held')
                : d.status==='refunded'?(LANG==='ar'?'مُرتجع':'Refunded')
+               : d.status==='partial_refund'?(LANG==='ar'?'استرداد جزئي':'Partial Refund')
                : (LANG==='ar'?'مُصادر':'Forfeited');
       // RULE: deposit date = deposit_received_date only, never created_at
       var rdStr = (d.deposit_received_date||'').slice(0,10);
@@ -459,9 +460,10 @@ var now = new Date();
         + (rdStr?' <span style="font-size:.7rem;color:var(--muted)">'+rdStr+'</span>':'')
         + ' <span style="font-size:.7rem;color:'+sCol+';font-weight:600">· '+sTxt+'</span>'
         + (d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+d.notes+'</div>':'')
+        + (d.status==='partial_refund'&&d.refund_amount>0?'<div style="font-size:.7rem;color:var(--amber)">↩️ مُرجَع جزئي: '+d.refund_amount+' AED · متبقي: '+(d.amount-d.refund_amount)+' AED · 📅 '+(d.refund_date||'').slice(0,10)+'</div>':'')
         + '</div>'
         + '<div style="display:flex;gap:5px;flex-shrink:0;margin-right:4px">'
-        + (d.status==='held' ? '<button onclick="quickRefundDeposit(\'' + d.id + '\')" style="padding:5px 9px;background:var(--red)22;border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.72rem;cursor:pointer;font-family:inherit">↩️</button>' : '')
+        + ((d.status==='held'||d.status==='partial_refund') ? '<button onclick="quickRefundDeposit(\'' + d.id + '\')" style="padding:5px 9px;background:var(--red)22;border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.72rem;cursor:pointer;font-family:inherit">↩️</button>' : '')
         + '<button onclick="editDeposit(\'' + d.id + '\')" style="padding:5px 9px;background:var(--accent)22;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:.72rem;cursor:pointer;font-family:inherit">✏️</button>'
         + '<button onclick="deleteDeposit(\'' + d.id + '\',\'' + unitId + '\')" style="padding:5px 9px;background:var(--red)22;border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:.72rem;cursor:pointer;font-family:inherit">🗑️</button>'
         + '</div>'
