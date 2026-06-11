@@ -1,3 +1,28 @@
+// ══════════════════════════════════════════════════════
+// PRINT HELPER — يفتح نافذة طباعة مستقلة
+// ══════════════════════════════════════════════════════
+function openPrintWindow(htmlContent) {
+  // حاول window.open أولاً
+  try {
+    var w = window.open('', '_blank');
+    if(w) {
+      w.document.open();
+      w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">'
+        +'<style>body{margin:0;padding:0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
+        +'</head><body>'+htmlContent+'</body></html>');
+      w.document.close();
+      setTimeout(function(){ try{ w.print(); }catch(_e){} }, 400);
+      return;
+    }
+  } catch(_e){}
+  // fallback: استخدم pdfOverlay
+  var el = document.getElementById('pdf-content');
+  if(el) el.innerHTML = htmlContent;
+  var overlay = document.getElementById('pdfOverlay');
+  if(overlay) overlay.style.display='flex';
+}
+window.openPrintWindow = openPrintWindow;
+
 // ══ REPORTS ══
 
 // ══════════════════════════════════════════════════════
@@ -1319,7 +1344,8 @@ async function exportPDF(type, mon) {
       +'<div style="font-size:9px;color:#888">💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.</div>'
       +'</div>';
     document.getElementById('pdf-content').innerHTML += _pdfCompare;
-    document.getElementById('pdfOverlay').style.display='flex';
+    document.getElementById('pdf-content').innerHTML = _pdfHtmlContent;
+    openPrintWindow(_pdfHtmlContent);
   } catch(e){ toast('خطأ PDF: '+e.message,'err'); console.error('exportPDF:',e); }
 }
 
@@ -1959,7 +1985,7 @@ async function exportRefundedDepsPDF(monYM) {
       +'</tr>';
   }).join('');
 
-  document.getElementById('pdf-content').innerHTML =
+  openPrintWindow(
     '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
     +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
     +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير التأمينات المُرتجعة</div>'
@@ -1988,7 +2014,7 @@ async function exportRefundedDepsPDF(monYM) {
     +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#1a7a4a">'+totalRefund.toLocaleString()+'</td>'
     +'<td style="border:1px solid #ddd"></td>'
     +'</tr></tfoot></table></div>';
-  document.getElementById('pdfOverlay').style.display='flex';
+  );
 }
 
 // ══════════════════════════════════════════════════════
@@ -2074,7 +2100,7 @@ async function exportDepDeductionsPDF(monYM) {
       +'</tr>';
   }).join('');
 
-  document.getElementById('pdf-content').innerHTML =
+  openPrintWindow(
     '<div style="font-family:Arial,sans-serif;direction:rtl;padding:20px;color:#111">'
     +'<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:16px;display:flex;justify-content:space-between">'
     +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">تقرير خصومات التأمين</div>'
@@ -2096,7 +2122,7 @@ async function exportDepDeductionsPDF(monYM) {
     +'<td style="padding:7px 8px;border:1px solid #ddd;text-align:center;color:#c0392b">'+totalDed.toLocaleString()+' AED</td>'
     +'<td colspan="2" style="border:1px solid #ddd"></td>'
     +'</tr></tfoot></table></div>';
-  document.getElementById('pdfOverlay').style.display='flex';
+  );
 }
 
 window.loadRefundedDepsReport = loadRefundedDepsReport;
