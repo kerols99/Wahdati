@@ -1901,6 +1901,7 @@ async function loadRefundedDepsReport(btn) {
       .gt('refund_amount', 0)
       .gte('refund_date', start)
       .lte('refund_date', end)
+      .in('status', ['refunded','partial_refund'])
       .order('apartment').order('room');
     if(error) throw error;
 
@@ -1912,7 +1913,7 @@ async function loadRefundedDepsReport(btn) {
       return;
     }
 
-    var totalDeposit    = refunds.reduce(function(s,d){ return s+Number(d.amount||0); },0);
+    var totalDeposit    = refunds.reduce(function(s,d){ return s+Number(d.refund_amount||0); },0);
     var totalRefund     = refunds.reduce(function(s,d){ return s+Number(d.refund_amount||0); },0);
     var totalDeductions = refunds.reduce(function(s,d){ return s+Number(d.deduction_amount||0); },0);
     var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
@@ -1968,7 +1969,7 @@ async function exportRefundedDepsPDF(monYM) {
     .gt('refund_amount', 0).gte('refund_date', start).lte('refund_date', end)
     .order('apartment').order('room');
 
-  var totalDeposit = (refunds||[]).reduce(function(s,d){return s+Number(d.amount||0);},0);
+  var totalDeposit = (refunds||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
   var totalRefund  = (refunds||[]).reduce(function(s,d){return s+Number(d.refund_amount||0);},0);
   var totalDed     = (refunds||[]).reduce(function(s,d){return s+Number(d.deduction_amount||0);},0);
   var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };

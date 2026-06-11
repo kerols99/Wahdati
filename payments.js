@@ -872,37 +872,42 @@ async function saveEditDeposit(depId) {
       var remainingRefund = refAmt; // المبلغ المُرجَع دلوقتي
 
       if(prevRefund > 0 && prevRefundDate && prevRefundDate !== refundDate) {
-        // فيه استرداد جزئي سابق — نحفظ السجل الحالي كـ partial
-        // ونضيف سجل جديد للاسترداد النهائي
+        // ── فيه استرداد جزئي سابق ──
+        // السجل الأول: يفضل كـ 'partial_refund' بمبلغه وتاريخه
         await sb.from('deposits').update({
           refund_amount: prevRefund,
           refund_date: prevRefundDate,
-          status: 'held',
+          status: 'partial_refund',
           deduction_amount: 0
         }).eq('id', depId);
 
-        // سجل جديد للاسترداد النهائي
+        // سجل جديد للاسترداد الثاني — بالمبلغ الفعلي اللي بيُرجعه دلوقتي
+        var secondRefund = refAmt; // المبلغ اللي أدخله المستخدم
         var { error: insErr } = await sb.from('deposits').insert({
           unit_id: curDep.unit_id,
           apartment: curDep.apartment,
           room: curDep.room,
           tenant_name: curDep.tenant_name,
-          amount: amt,
+          amount: secondRefund,  // مبلغ هذا الاسترداد فقط
           deposit_received_date: curDep.deposit_received_date,
           status: 'refunded',
-          refund_amount: remainingRefund,
+          refund_amount: secondRefund,
           refund_date: refundDate,
           deduction_amount: dedAmt,
           notes: notes
         });
         if(insErr) throw insErr;
+
+        console.log('[Deposit Refund] Partial #1:', prevRefund, 'on', prevRefundDate);
+        console.log('[Deposit Refund] Final #2:', secondRefund, 'on', refundDate);
       } else {
         // أول استرداد مباشر — حدّث السجل نفسه
         updateData.refund_date = refundDate;
-        updateData.refund_amount = amt;
+        updateData.refund_amount = refAmt;
         updateData.deduction_amount = dedAmt;
         var { error } = await sb.from('deposits').update(updateData).eq('id', depId);
         if(error) throw error;
+        console.log('[Deposit Refund] Direct refund:', refAmt, 'on', refundDate);
       }
     } else {
       // استرداد جزئي — held مع تسجيل المبلغ المُرجَع
