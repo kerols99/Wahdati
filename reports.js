@@ -56,6 +56,140 @@ function _pickDepositForReport(depRows, monYM) {
 // Uncollected = rent only (deposit is extra, not rent)
 // ══════════════════════════════════════════════════════
 
+
+// ══════════════════════════════════════════════════════
+// buildMonthSnapshot(monYM) — Source of Truth
+// Read Only — NO INSERT / UPDATE / DELETE
+// يبني قائمة المستأجرين الذين كانوا موجودين فعلياً في الشهر المختار
+// نفس منطق loadMonthly بالضبط
+// ══════════════════════════════════════════════════════
+async function buildMonthSnapshot(monYM) {
+  var monStart    = monYM+'-01';
+  var monEnd      = window.monthEnd(monYM);
+  var monNext2Start = (function(){
+    var d = new Date(monYM+'-01'); d.setMonth(d.getMonth()+2);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+  })();
+
+  var nowYM = (function(){
+    var d = new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  })();
+
+  // ── Queries ──
+  var [unitsRes, histRes, discRes, rentHistRes] = await Promise.all([
+    sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit,phone,language,unit_status'),
+    sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,first_month_rent,deposit,start_date,end_date,snapshot_type')
+      .gte('end_date', monStart)
+      .lte('end_date', monNext2Start),
+    sb.from('unit_discounts').select('unit_id,discount_amount')
+      .lte('start_date', monEnd)
+      .gte('end_date', monStart),
+    sb.from('unit_history').select('unit_id,monthly_rent,end_date,snapshot_type')
+      .gt('end_date', monEnd)
+      .order('end_date', {ascending: true})
+  ]);
+
+  var allUnits  = unitsRes.data||[];
+  var histUnits = (histRes.data||[]).filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
+  histUnits.sort(function(a,b){ return (b.end_date||'') > (a.end_date||'') ? 1 : -1; });
+
+  var discMap = {};
+  (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
+
+  // historicRentMap
+  var historicRentMap = {};
+  if(monYM < nowYM) {
+    (rentHistRes.data||[]).forEach(function(h){
+      if(!historicRentMap[h.unit_id]) historicRentMap[h.unit_id] = h.monthly_rent||0;
+    });
+  }
+
+  var monYMcheck = monYM;
+
+  // ابدأ بالمستأجرين الحاليين اللي دخلوا في الشهر أو قبله
+  var units = allUnits.filter(function(u){
+    if(u.is_vacant) return false;
+    var startYM = (u.start_date||'').slice(0,7);
+    return !startYM || startYM <= monYMcheck;
+  });
+
+  var existingIds = new Set(units.map(function(u){ return u.id; }));
+  var currentStartMap = {};
+  units.forEach(function(u){ currentStartMap[u.id] = (u.start_date||'').slice(0,7); });
+
+  var addedHistKeys = new Set();
+
+  histUnits.forEach(function(h){
+    var uniqueKey = String(h.unit_id)+'_'+String(h.end_date||'');
+    if(addedHistKeys.has(uniqueKey)) return;
+
+    var formerUnit = {
+      id: h.unit_id, apartment: String(h.apartment||''), room: String(h.room||''),
+      monthly_rent: h.monthly_rent||0, first_month_rent: h.first_month_rent||null,
+      tenant_name: h.tenant_name||null, tenant_name2: h.tenant_name2||null,
+      is_vacant: false, start_date: h.start_date||null, deposit: h.deposit||0,
+      _isFormerTenant: true, _endDate: h.end_date, _snapshotType: h.snapshot_type||''
+    };
+
+    var endDateYM  = (h.end_date||'').slice(0,7);
+    var startDateYM = (h.start_date||'').slice(0,7);
+
+    if(h.end_date && endDateYM < monYMcheck) return;
+    if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
+    if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck) return;
+    if(h.snapshot_type === 'internal_transfer_in') return;
+    if(h.snapshot_type === 'rent_change') return;
+
+    if(!existingIds.has(h.unit_id)) {
+      addedHistKeys.add(uniqueKey);
+      units.push(formerUnit);
+      existingIds.add(h.unit_id);
+      currentStartMap[h.unit_id] = startDateYM;
+    } else {
+      var existing = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+      if(existing && (!existing.monthly_rent || existing.monthly_rent === 0)) {
+        var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+        if(idx > -1) { addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
+      } else {
+        var currentStartYM = currentStartMap[h.unit_id] || '';
+        if(currentStartYM > monYMcheck) {
+          var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+          if(idx > -1) { addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
+        } else if(currentStartYM === monYMcheck) {
+          var currentUnit = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
+          var samePerson = currentUnit && currentUnit.tenant_name === h.tenant_name;
+          if(!samePerson) {
+            addedHistKeys.add(uniqueKey);
+            var fu2 = Object.assign({}, formerUnit);
+            fu2.id = h.unit_id + '_f_' + String(h.end_date||'').slice(0,10);
+            units.push(fu2);
+          }
+        }
+      }
+    }
+  });
+
+  // ترتيب
+  units.sort(function(a,b){
+    var aa=parseInt(a.apartment)||0, bb=parseInt(b.apartment)||0;
+    if(aa!==bb) return aa-bb;
+    return (parseInt(a.room)||0)-(parseInt(b.room)||0);
+  });
+
+  // تطبيق historicRentMap
+  if(monYM < nowYM) {
+    units = units.map(function(u){
+      var histRent = historicRentMap[u.id] || historicRentMap[String(u.id).split('_f')[0]];
+      if(histRent && !u._isFormerTenant) return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
+      return u;
+    });
+  }
+
+  return { units: units, discMap: discMap, monStart: monStart, monEnd: monEnd };
+}
+window.buildMonthSnapshot = buildMonthSnapshot;
+
 async function loadMonthly(btn) {
   var rpmEl = document.getElementById('rpm');
   // خد الشهر من الـ input الأول، لو فاضي خد من getActiveMonth
