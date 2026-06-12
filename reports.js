@@ -263,10 +263,6 @@ async function loadMonthly(btn) {
     var coveredRooms = {};
     units.forEach(function(u){ coveredRooms[String(u.apartment)+'-'+String(u.room)] = true; });
 
-    // DEBUG: تأكد من Basher في مارس
-    console.log('[loadMonthly] coveredRooms[101-9]:', coveredRooms['101-9']);
-    var basherInUnits = units.find(function(u){ return String(u.apartment)==='101' && String(u.room)==='9'; });
-    console.log('[loadMonthly] 101-9 in units:', basherInUnits ? basherInUnits.tenant_name+' | '+basherInUnits.monthly_rent : 'NOT FOUND');
     pays.forEach(function(p){
       // If payment is missing apartment/room, try to resolve via unit_id
       var apt = p.apartment, rm = p.room;
@@ -1338,8 +1334,7 @@ async function exportPDF(type, mon) {
       +'<div style="font-size:9px;color:#888">💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.</div>'
       +'</div>';
     document.getElementById('pdf-content').innerHTML += _pdfCompare;
-    document.getElementById('pdf-content').innerHTML = _pdfHtmlContent;
-    openPrintWindow(_pdfHtmlContent);
+    openPrintWindow(document.getElementById('pdf-content').innerHTML);
   } catch(e){ toast('خطأ PDF: '+e.message,'err'); console.error('exportPDF:',e); }
 }
 
