@@ -434,7 +434,10 @@
 <div style="background:var(--amber)12;border:1px solid var(--amber)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
   🏷️ <b style="color:var(--amber)">تقرير الخصومات</b> — الخصومات المؤقتة النشطة والمنتهية
 </div>
-<button class="btn bp" onclick="loadDiscReport(this)" style="margin-bottom:10px">🏷️ عرض تقرير الخصومات</button>
+<div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+  <input class="inp" id="rdisc-month" type="month" style="flex:1" placeholder="اختر شهر (اختياري)"/>
+  <button class="btn bp" onclick="loadDiscReport(this)" style="flex:1">🏷️ عرض الخصومات</button>
+</div>
 <div id="rDiscOut" style="margin-top:12px"></div>
 </div>
 <div class="tpanel" id="rVacant">
