@@ -209,8 +209,9 @@ async function loadMonthly(btn) {
     // أول يوم في الشهر التالت — عشان نشمل departure اللي end_date = أول يوم الشهر التاني
     var _monDate2 = new Date(mon.slice(0,7)+'-01'); _monDate2.setMonth(_monDate2.getMonth()+2);
     var monNext2Start = _monDate2.getFullYear()+'-'+String(_monDate2.getMonth()+1).padStart(2,'0')+'-01';
-    var [unitsRes, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes, histRes, discRes, rentHistRes] = await Promise.all([
-      sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit').order('apartment'),
+    // ── buildMonthSnapshot: Source of Truth ──
+    var [snapResult, paysRes, expsRes, ownsRes, pendingMovesRes, depsRes, refundedDepsRes] = await Promise.all([
+      buildMonthSnapshot(mon.slice(0,7)),
       // ACCRUAL: filter rent by payment_month (when rent is DUE)
       sb.from('rent_payments').select('unit_id,amount,apartment,room,payment_month,payment_date,payment_method,notes,tenant_num').like('payment_month', mon + '%'),
       sb.from('expenses').select('amount,category,description,receipt_no,period_month').eq('period_month', monStart),
@@ -224,181 +225,14 @@ async function loadMonthly(btn) {
       sb.from('deposits').select('unit_id,amount,refund_amount,refund_date,tenant_name,apartment,room')
         .gt('refund_amount', 0)
         .gte('refund_date', monStart)
-        .lte('refund_date', monEnd),
-      // كل المستأجرين اللي end_date في الشهر أو بعده بشهر واحد بس
-      // مش بنفلتر بـ start_date عشان ممكن يكون null
-      sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,first_month_rent,deposit,start_date,end_date,snapshot_type')
-        .gte('end_date', monStart)
-        .lte('end_date', monNext2Start), // شامل أول يوم الشهر التالت عشان نمسك departure متأخر
-      // خصومات نشطة خلال الشهر
-      sb.from('unit_discounts').select('unit_id,discount_amount')
-        .lte('start_date', monEnd)
-        .gte('end_date', monStart),
-      // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار
-      // بنجيب monthly_rent اللي كان سارياً في الشهر المختار
-      sb.from('unit_history').select('unit_id,monthly_rent,end_date')
-        .gt('end_date', monEnd)
-        .order('end_date', {ascending: true})
+        .lte('refund_date', monEnd)
     ]);
-    var allUnits     = unitsRes.data||[];
-    var histUnits    = (histRes && histRes.data) ? histRes.data : [];
-    // discMap: unit_id → discount amount نشط في الشهر
-    var discMap = {};
-    (discRes && discRes.data ? discRes.data : []).forEach(function(d){
-      discMap[d.unit_id] = (discMap[d.unit_id]||0) + (d.discount_amount||0);
-    });
-    // historicRentMap: لو بنشوف تقرير تاريخي وإيجار الوحدة اتغير بعد الشهر ده
-    // بنجيب أقدم سجل في unit_history بعد monEnd — ده بيمثّل الإيجار اللي تغيّر من بعده
-    var historicRentMap = {};
-    var _monYM = (mon||'').slice(0,7);
-    var _nowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
-    if(_monYM < _nowYM) {
-      (rentHistRes && rentHistRes.data ? rentHistRes.data : []).forEach(function(h){
-        // أول سجل لكل وحدة (الأقدم بعد monEnd) = الإيجار اللي كان قبل التغيير
-        if(!historicRentMap[h.unit_id]) {
-          historicRentMap[h.unit_id] = h.monthly_rent||0;
-        }
-      });
-    }
-    // فلتر: المستأجر كان موجود في الشهر (start_date <= monEnd)
-    histUnits = histUnits.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
-    // رتّب من الأحدث للأقدم
-    histUnits.sort(function(a,b){ return (b.end_date||'') > (a.end_date||'') ? 1 : -1; });
 
-    var pendingMoves = pendingMovesRes ? (pendingMovesRes.data||[]) : [];
+    // units من buildMonthSnapshot — Source of Truth
+    var units    = snapResult.units;
+    var discMap  = snapResult.discMap;
+    var allUnits = units; // للتوافق مع الكود التالي
 
-    var monYMcheck = (mon||'').slice(0,7);
-    var now = new Date();
-    var currentYM = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-
-    // ابدأ بالمستأجرين الحاليين اللي دخلوا في الشهر أو قبله
-    var units = allUnits.filter(function(u){
-      if(u.is_vacant) return false;
-      var startYM = (u.start_date||'').slice(0,7);
-      return !startYM || startYM <= monYMcheck;
-    });
-
-    var existingIds = new Set(units.map(function(u){ return u.id; }));
-    var currentStartMap = {};
-    units.forEach(function(u){ currentStartMap[u.id] = (u.start_date||'').slice(0,7); });
-
-    // سجّل كل الـ histKeys اللي أضفناهم عشان نتجنب التكرار
-    var addedHistKeys = new Set();
-
-    histUnits.forEach(function(h){
-      var uniqueKey = String(h.unit_id)+'_'+String(h.end_date||'');
-      if(addedHistKeys.has(uniqueKey)) return;
-
-      var formerUnit = {
-        id: h.unit_id, apartment: String(h.apartment||''), room: String(h.room||''),
-        monthly_rent: h.monthly_rent||0, first_month_rent: h.first_month_rent||null,
-        tenant_name: h.tenant_name||null,
-        tenant_name2: h.tenant_name2||null, is_vacant: false,
-        start_date: h.start_date||null, deposit: h.deposit||0,
-        _isFormerTenant: true, _endDate: h.end_date,
-        _snapshotType: h.snapshot_type||''
-      };
-
-      // هل السجل ده كان نشط في الشهر المختار؟
-      var endDateYM = (h.end_date||'').slice(0,7);
-      var startDateYM = (h.start_date||'').slice(0,7);
-      // لو خرج قبل الشهر — تجاهله
-      if(h.end_date && endDateYM < monYMcheck) return;
-      // لو خرج في أول يوم من الشهر = غادر آخر الشهر السابق — تجاهله
-      if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
-      // لو خرج بعد الشهر التالي مباشرة (مثلاً end_date = 2026-06-01 وإحنا في أبريل) — المستأجر لسه موجود
-      // مش بنشيله — نضيفه للتقرير لأنه كان ساكن في الشهر المختار
-      // لو نقل داخلي — المستأجر لسه في المبنى، ما يظهرش كمغادر في التقرير
-      // النقل الداخلي — تجاهله بس لو حصل في نفس الشهر المختار (المستأجر انتقل هذا الشهر)
-      // لو حصل في شهر تاني — المستأجر كان موجود في الشهر المختار فيظهر
-      if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck) return;
-      if(h.snapshot_type === 'internal_transfer_in') return;
-      if(h.snapshot_type === 'rent_change') return; // ده بس للـ historicRentMap، مش صف منفصل
-
-      if(!existingIds.has(h.unit_id)) {
-        // وحدة فاضية دلوقتي أو مستأجرها اتغير — أضف السابق من unit_history
-        addedHistKeys.add(uniqueKey);
-        units.push(formerUnit);
-        existingIds.add(h.unit_id);
-        currentStartMap[h.unit_id] = startDateYM;
-      } else if(existingIds.has(h.unit_id) && (function(){
-        // لو الوحدة موجودة في units بس monthly_rent = 0 أو tenant_name = null
-        // ده معناه إنها اتفرّغت وبياناتها اتمسحت — استبدلها بالـ unit_history
-        var existing = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-        // بس لو monthly_rent = 0 — الوحدة اتفرّغت وبياناتها اتمسحت
-        return existing && (!existing.monthly_rent || existing.monthly_rent === 0);
-      })()) {
-        var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-        if(idx > -1) {
-          addedHistKeys.add(uniqueKey);
-          units[idx] = formerUnit;
-          currentStartMap[h.unit_id] = startDateYM;
-        }
-      } else {
-        var currentStartYM = currentStartMap[h.unit_id] || '';
-
-        if(currentStartYM > monYMcheck) {
-          // المستأجر الحالي دخل بعد الشهر — استبدله بالسابق في التقرير
-          var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-          if(idx > -1) {
-            addedHistKeys.add(uniqueKey);
-            units[idx] = formerUnit;
-            currentStartMap[h.unit_id] = startDateYM;
-          }
-        } else if(currentStartYM === monYMcheck) {
-          // المستأجر الجديد دخل في نفس الشهر — السابق خرج في نفس الشهر أو أول الشهر اللي بعده
-          // أضف السابق كصف منفصل
-          var currentUnit = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-          var samePerson = currentUnit && currentUnit.tenant_name === h.tenant_name;
-          if(!samePerson) {
-            addedHistKeys.add(uniqueKey);
-            formerUnit.id = h.unit_id + '_f_' + String(h.end_date||'').slice(0,10);
-            units.push(formerUnit);
-          }
-        }
-        // لو currentStartYM < monYMcheck — المستأجر الحالي دخل قبل الشهر
-        // والسجل في unit_history ده لمستأجر خرج خلال الشهر أو أول الشهر اللي بعده
-        // يعني نفس المستأجر الحالي هو اللي خرج — تجاهله (مش محتاج صف إضافي)
-      }
-    });
-    units.sort(function(a,b){
-      var aa=parseInt(a.apartment)||0, bb=parseInt(b.apartment)||0;
-      if(aa!==bb) return aa-bb;
-      return (parseInt(a.room)||0)-(parseInt(b.room)||0);
-    });
-    // Build map: unit_id → pending move (for future tenant name)
-    var pendingMoveMap = {};
-    pendingMoves.forEach(function(m){
-      if(m.unit_id) pendingMoveMap[m.unit_id] = m;
-    });
-    // Determine effective tenant name per unit for this month
-    units = units.map(function(u){
-      var pm = pendingMoveMap[u.id];
-      if(pm) {
-        var moveDate = pm.new_start_date || pm.move_date;
-        var moveMon = moveDate ? moveDate.slice(0,7) : null;
-        var reportMon = mon.slice(0,7);
-        if(moveMon && moveMon <= reportMon) {
-          // New tenant takes over this month
-          return Object.assign({}, u, {
-            tenant_name: pm.new_tenant_name || pm.tenant_name,
-            monthly_rent: pm.new_rent || u.monthly_rent,
-            _pendingTenant: true
-          });
-        }
-      }
-      return u;
-    });
-    // لو تقرير تاريخي — استبدل monthly_rent بالقيمة اللي كانت سارية في الشهر ده
-    if(Object.keys(historicRentMap).length > 0) {
-      units = units.map(function(u){
-        var histRent = historicRentMap[u.id] || historicRentMap[String(u.id).split('_f')[0]];
-        if(histRent && !u._isFormerTenant) {
-          return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
-        }
-        return u;
-      });
-    }
     var pays         = paysRes.data||[];
     var exps         = expsRes.data||[];
     var owns         = ownsRes.data||[];
