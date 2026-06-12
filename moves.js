@@ -401,7 +401,7 @@ async function saveArrivalEntry(btn){
           persons_count: old.persons_count,
           start_date: old.start_date,
           end_date: date || new Date().toISOString().split('T')[0],
-          snapshot_type: 'departure',
+          snapshot_type: 'internal_transfer_out',
           recorded_by: (ME||{}).id || null
         });
       }
