@@ -8,7 +8,7 @@ function openPrintWindow(htmlContent) {
     if(w) {
       w.document.open();
       w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">'
-        +'<style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px}table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}thead{display:table-header-group}tfoot{display:table-footer-group}th,td{padding:5px 8px;border:1px solid #ccc;text-align:right}th{background:#1a3a6a;color:#fff;font-size:11px}.hd{display:flex;justify-content:space-between;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
+        +'<style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px;background:#fff}table{width:100%;border-collapse:collapse;margin-bottom:12px}tr{page-break-inside:avoid}thead{display:table-header-group}tfoot{display:table-footer-group}th{background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:11px;border:1px solid #999}td{padding:5px 8px;border:1px solid #ddd;text-align:right;font-size:11px}.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
         +'</head><body>'+htmlContent+'</body></html>');
       w.document.close();
       setTimeout(function(){ try{ w.print(); }catch(_e){} }, 400);
@@ -1237,6 +1237,7 @@ async function exportPDF(type, mon) {
         +'<td style="border:1px solid #ddd"></td></tr>';
     });
 
+    var _pdfStaticCSS = '<style>'      +'*{box-sizing:border-box}'      +'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px;background:#fff}'      +'table{width:100%;border-collapse:collapse;page-break-inside:auto;margin-bottom:12px}'      +'tr{page-break-inside:avoid;page-break-after:auto}'      +'thead{display:table-header-group}'      +'tfoot{display:table-footer-group}'      +'th{background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:11px;border:1px solid #ccc}'      +'td{padding:5px 8px;border:1px solid #ddd;text-align:right;font-size:11px}'      +'.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}'      +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'      +'</style>';
     document.getElementById('pdf-content').innerHTML =
       '<div class="hd">'
     var pdfPct = totalRent>0?Math.round(totalRentColl/totalRent*100):0;
@@ -1266,6 +1267,10 @@ async function exportPDF(type, mon) {
         +'<span style="font-size:11px;color:#555">🔒 تأمينات محصّلة</span>'
         +'<b style="font-size:12px;color:#2456d3">'+totalDeps.toLocaleString()+' AED</b>'
         +'</div>':'')
+      +(totalRefunds>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;margin-bottom:2px;background:#ffeaea;border-radius:4px">'
+        +'<span style="font-size:11px;color:#555">↩️ تأمينات مُرتجعة</span>'
+        +'<b style="font-size:12px;color:#c0392b">- '+totalRefunds.toLocaleString()+' AED</b>'
+        +'</div>':'')
       +'<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 8px;margin-bottom:2px;background:#d4edda;border-radius:4px;border:1px solid #1a7a4a44">'
         +'<span style="font-size:11px;color:#555;font-weight:600">💵 إجمالي الكاش</span>'
         +'<b style="font-size:13px;color:#1a7a4a;font-weight:800">'+totalColl.toLocaleString()+' AED</b>'
@@ -1288,7 +1293,7 @@ async function exportPDF(type, mon) {
       +'</div>'
       +'<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:'+(( totalColl-totalExp-totalOwner)>=0?'#1a7a4a':'#c0392b')+';border-radius:6px;color:#fff">'
         +'<span style="font-size:12px;font-weight:700">🏦 الإجمالي الصافي</span>'
-        +'<b style="font-size:15px;font-weight:800">'+(totalColl-totalExp-totalOwner).toLocaleString()+' AED</b>'
+        +'<b style="font-size:15px;font-weight:800">'+(totalColl-totalRefunds-totalExp-totalOwner).toLocaleString()+' AED</b>'
       +'</div>'
       +'</div>';
 
@@ -1340,7 +1345,7 @@ async function exportPDF(type, mon) {
       +'<div style="font-size:9px;color:#888">💡 سبب الفرق غالباً هو دفعات تم استلامها خلال الشهر لكنها تخص شهوراً أخرى أو العكس.</div>'
       +'</div>';
     document.getElementById('pdf-content').innerHTML += _pdfCompare;
-    openPrintWindow(document.getElementById('pdf-content').innerHTML);
+    openPrintWindow(_pdfStaticCSS + document.getElementById('pdf-content').innerHTML);
   } catch(e){ toast('خطأ PDF: '+e.message,'err'); console.error('exportPDF:',e); }
 }
 
