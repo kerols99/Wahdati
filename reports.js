@@ -8,7 +8,7 @@ function openPrintWindow(htmlContent) {
     if(w) {
       w.document.open();
       w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">'
-        +'<style>body{margin:0;padding:0}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
+        +'<style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px}table{width:100%;border-collapse:collapse;page-break-inside:auto}tr{page-break-inside:avoid}thead{display:table-header-group}tfoot{display:table-footer-group}th,td{padding:5px 8px;border:1px solid #ccc;text-align:right}th{background:#1a3a6a;color:#fff;font-size:11px}.hd{display:flex;justify-content:space-between;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
         +'</head><body>'+htmlContent+'</body></html>');
       w.document.close();
       setTimeout(function(){ try{ w.print(); }catch(_e){} }, 400);
@@ -362,8 +362,12 @@ async function loadMonthly(btn) {
     exps.forEach(function(e){ totalExp   += e.amount||0; });
     owns.forEach(function(o){ totalOwner += o.amount||0; });
 
+    // totalDeps الصح — مجموع كل التأمينات اللي deposit_received_date في الشهر
+    // بدون الاعتماد على depMap (اللي مرتبط بالوحدات بس)
+    var totalDeps = (deps||[]).reduce(function(s,d){
+      return s + _pickDepositForReport([d], monYM);
+    }, 0);
     // totalColl = rent + deposit (total money received this month)
-    totalDeps += extraDepsFromVacant;  // إضافة تأمينات الوحدات الشاغرة
     var totalColl = totalRentColl + totalDeps;
 
     // ── Group by apartment ──
@@ -1138,15 +1142,17 @@ async function exportPDF(type, mon) {
       } catch(_e){}
     }
 
-    var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
+    var totalRent=0, totalRentColl=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
       // نفس منطق loadMonthly: first_month_rent + discount + historicRent
       var baseRent = (u.start_date && u.start_date.slice(0,7)===monYM && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
       var disc = _pdfDiscMap[u.id]||0;
       totalRent += Math.max(0, baseRent - disc);
       var _pk2=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk2;
-      totalDeps     += depMap[u.id]||0;
+      // depMap used only for per-room display — not for grand total
     });
+    // totalDeps الصح — من كل التأمينات مباشرة
+    var totalDeps = (deps||[]).reduce(function(s,d){ return s + _pickDepositForReport([d], monYM); }, 0);
     var totalColl = totalRentColl + totalDeps;
     exps.forEach(function(e){ totalExp   += e.amount||0; });
     owns.forEach(function(o){ totalOwner += o.amount||0; });
