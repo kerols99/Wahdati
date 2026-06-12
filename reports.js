@@ -340,6 +340,19 @@ async function loadMonthly(btn) {
       var amt = _pickDepositForReport(depRawMap[u.id]||[], monYM);
       if(amt > 0) depMap[u.id] = amt;
     });
+    // إضافة تأمينات الوحدات الشاغرة (forfeited/held) اللي deposit_received_date في الشهر
+    // عشان تأمين المُصادر يظهر حتى لو الوحدة شاغرة
+    var extraDepsFromVacant = 0;
+    (depsRes.data||[]).forEach(function(d){
+      // لو مش موجود في depMap (يعني وحدة شاغرة أو مش في units)
+      var alreadyCounted = depMap[d.unit_id];
+      if(!alreadyCounted) {
+        var rdFull  = String(d.deposit_received_date||'').slice(0,10);
+        var refFull = String(d.refund_date||'').slice(0,10);
+        if(rdFull && refFull && rdFull === refFull && Number(d.refund_amount||0) > 0) return;
+        extraDepsFromVacant += Number(d.amount||0);
+      }
+    });
 
     // isNewForMonth: used ONLY for UI icon display (🆕) — does NOT affect deposit calculation
     // Deposit is NEVER included because of isNew — only deposit_received_date controls that
@@ -377,6 +390,7 @@ async function loadMonthly(btn) {
     owns.forEach(function(o){ totalOwner += o.amount||0; });
 
     // totalColl = rent + deposit (total money received this month)
+    totalDeps += extraDepsFromVacant;  // إضافة تأمينات الوحدات الشاغرة
     var totalColl = totalRentColl + totalDeps;
 
     // ── Group by apartment ──
