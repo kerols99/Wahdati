@@ -80,8 +80,7 @@ async function buildMonthSnapshot(monYM) {
   var [unitsRes, histRes, discRes, rentHistRes] = await Promise.all([
     sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit,phone,language,unit_status'),
     sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,first_month_rent,deposit,start_date,end_date,snapshot_type')
-      .gte('end_date', monStart)
-      .lte('end_date', monNext2Start),
+      .gte('end_date', monStart),
     sb.from('unit_discounts').select('unit_id,discount_amount')
       .lte('start_date', monEnd)
       .gte('end_date', monStart),
