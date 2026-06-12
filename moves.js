@@ -386,6 +386,15 @@ async function saveArrivalEntry(btn){
       var rUnit = await sb.from('units').select('*').eq('id',unitId).maybeSingle();
       if(rUnit.data) {
         var old = rUnit.data;
+        // هل العملية نقل داخلي؟
+        // — لو departId موجود = مستأجر قديم بيغادر لنفس السبب
+        // — أو لو في سجل في internal_transfers للوحدة دي
+        var isInternalTransfer = !!departId;
+        if(!isInternalTransfer) {
+          var { data: itCheck } = await sb.from('internal_transfers')
+            .select('id').eq('from_unit_id', parseInt(unitId)||unitId).limit(1);
+          if(itCheck && itCheck.length > 0) isInternalTransfer = true;
+        }
         await sb.from('unit_history').insert({
           unit_id: unitId,
           apartment: old.apartment,
@@ -401,7 +410,7 @@ async function saveArrivalEntry(btn){
           persons_count: old.persons_count,
           start_date: old.start_date,
           end_date: date || new Date().toISOString().split('T')[0],
-          snapshot_type: 'internal_transfer_out',
+          snapshot_type: isInternalTransfer ? 'internal_transfer_out' : 'departure',
           recorded_by: (ME||{}).id || null
         });
       }

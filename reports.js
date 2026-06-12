@@ -136,7 +136,8 @@ async function buildMonthSnapshot(monYM) {
 
     if(h.end_date && endDateYM < monYMcheck) return;
     if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
-    if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck) return;
+    // internal_transfer_out: تجاهله بس لو end_date = يوم 1 (محفوظ بالشرط اللي فوق)
+    // مش نتجاهله لمجرد إنه في نفس الشهر — المستأجر كان ساكن خلال الشهر
     if(h.snapshot_type === 'internal_transfer_in') return;
     if(h.snapshot_type === 'rent_change') return;
 
