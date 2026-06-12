@@ -371,16 +371,42 @@ async function loadCollReport(btn) {
     var totalOwner = owns.reduce(function(s,o){return s+(o.amount||0);},0);
     var net        = totalCash - totalRefund - totalExp - totalOwner;
 
+    // بناء خريطة apartment-room من snapshot
+    var snapRoomMap = {};
+    units.forEach(function(u){
+      var k = String(u.apartment)+'-'+String(u.room);
+      snapRoomMap[k] = u;
+    });
+
     // Group payments by apartment — مع اسم المستأجر الصح في الشهر المختار
     var aptGroups = {};
+    var unknownPays = []; // دفعات لوحدات مش في snapshot
     pays.forEach(function(p){
       var apt = String(p.apartment||'?');
-      if(!aptGroups[apt]) aptGroups[apt]={rooms:{}, total:0};
       var room = String(p.room||'?');
+      var roomKey = apt+'-'+room;
+
+      // تحقق لو الوحدة في snapshot
+      var snapUnit = snapRoomMap[roomKey];
+      var inSnapshot = !!snapUnit;
+
+      if(!inSnapshot) {
+        // دفعة لوحدة مش في snapshot — عرضها منفصلة
+        unknownPays.push({
+          apt: apt, room: room,
+          amount: p.amount||0,
+          payment_date: p.payment_date||'',
+          payment_month: (p.payment_month||'').slice(0,7),
+          is_advance: (p.payment_month||'').slice(0,7) > monYM,
+          is_late: (p.payment_month||'').slice(0,7) < monYM
+        });
+        return;
+      }
+
+      if(!aptGroups[apt]) aptGroups[apt]={rooms:{}, total:0};
       if(!aptGroups[apt].rooms[room]) {
-        var u = unitMap[p.unit_id]||{};
-        // استخدم المستأجر الصح من tenantInMonth
-        var correctTenant = tenantInMonth[p.unit_id] || u.tenant_name || '—';
+        var u = snapUnit;
+        var correctTenant = u.tenant_name || tenantInMonth[p.unit_id] || '—';
         aptGroups[apt].rooms[room] = {
           room:p.room, pays:[], total:0,
           tenant: correctTenant,
@@ -487,6 +513,29 @@ async function loadCollReport(btn) {
 
         html += '</div>';
       });
+    }
+
+    // ── Unknown Payments (دفعات لوحدات مش في snapshot) ──
+    if(unknownPays.length > 0) {
+      var unknownTotal = unknownPays.reduce(function(s,p){return s+p.amount;},0);
+      html += '<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;border:1.5px solid var(--amber)44">'
+        +'<div style="padding:10px 14px;background:var(--amber)15;border-bottom:1px solid var(--border);font-weight:700;font-size:.85rem;color:var(--amber)">'
+        +'⚠️ دفعات بدون مستأجر نشط في الشهر ('+unknownPays.length+') — '+unknownTotal.toLocaleString()+' AED</div>';
+      unknownPays.forEach(function(p){
+        var pmBadge = p.is_advance
+          ? '<span style="font-size:.6rem;background:var(--amber)22;color:var(--amber);border-radius:4px;padding:1px 5px;margin-left:4px">مقدمًا '+p.payment_month+'</span>'
+          : p.is_late
+          ? '<span style="font-size:.6rem;background:var(--red)22;color:var(--red);border-radius:4px;padding:1px 5px;margin-left:4px">متأخر '+p.payment_month+'</span>'
+          : '';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border)22">'
+          +'<div>'
+          +'<div style="font-size:.8rem;font-weight:700">شقة '+escapeHtml(p.apt)+'–'+escapeHtml(p.room)+'</div>'
+          +'<div style="font-size:.7rem;color:var(--muted)">📅 '+p.payment_date.slice(0,10)+' '+pmBadge+'</div>'
+          +'</div>'
+          +'<div style="font-weight:700;color:var(--amber)">'+p.amount.toLocaleString()+' AED</div>'
+          +'</div>';
+      });
+      html += '</div>';
     }
 
     // ── Deposits section ──
