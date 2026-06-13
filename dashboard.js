@@ -129,6 +129,8 @@ async function loadSmartDash(ym) {
 
       if(h.end_date && endDateYM < monYMcheck) return;
       if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
+      // internal_transfer_out: اعرضه بس لو حصل في آخر يوم من الشهر
+      if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck && h.end_date !== monEnd) return;
       if(h.snapshot_type === 'internal_transfer_in') return;
       if(h.snapshot_type === 'rent_change') return;
 
