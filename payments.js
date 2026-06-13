@@ -880,11 +880,11 @@ async function saveEditDeposit(depId) {
 
       if(prevRefund > 0 && prevRefundDate && prevRefundDate !== refundDate) {
         // ── فيه استرداد جزئي سابق ──
-        // السجل الأول: يتغلق كـ 'refunded' بمبلغه وتاريخه الأصلي
+        // السجل الأول: يفضل كـ 'partial_refund' بمبلغه وتاريخه
         await sb.from('deposits').update({
           refund_amount: prevRefund,
           refund_date: prevRefundDate,
-          status: 'refunded',
+          status: 'partial_refund',
           deduction_amount: 0
         }).eq('id', depId);
 

@@ -456,9 +456,7 @@ var now = new Date();
       var rdStr = (d.deposit_received_date||'').slice(0,10);
       return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)22">'
         + '<div style="flex:1;min-width:0">'
-        + '<span style="color:var(--accent);font-weight:700;font-size:.85rem">'+(d.status==='refunded'&&d.refund_amount>0?(d.refund_amount):d.amount||0)+' AED</span>'
-        + (d.status==='refunded'&&d.refund_amount>0&&d.refund_amount!==d.amount?' <span style="font-size:.65rem;color:var(--muted)">من '+d.amount+'</span>':'')
-        + (d.tenant_name?' <span style="font-size:.72rem;color:var(--text);font-weight:600">'+d.tenant_name+'</span>':'')
+        + '<span style="color:var(--accent);font-weight:700;font-size:.85rem">'+(d.amount||0)+' AED</span>'
         + (rdStr?' <span style="font-size:.7rem;color:var(--muted)">'+rdStr+'</span>':'')
         + ' <span style="font-size:.7rem;color:'+sCol+';font-weight:600">· '+sTxt+'</span>'
         + (d.notes?'<div style="font-size:.7rem;color:var(--muted)">'+d.notes+'</div>':'')
