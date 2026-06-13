@@ -2,6 +2,18 @@
 // Features: Smart Dashboard, Collection Report, Quick Payment,
 //           Late Payers, Forecast, Month Comparison
 
+// helper مشترك — نفسه في reports.js
+function calcEffectiveRent(u, discMap, adjustMap) {
+  var adj = adjustMap && adjustMap[u.id];
+  if(adj) {
+    if(adj.type === 'override')  return Math.max(0, adj.amount);
+    if(adj.type === 'surcharge') return Math.max(0, (u.first_month_rent||u.monthly_rent||0) + adj.amount - (discMap&&discMap[u.id]||0));
+    if(adj.type === 'discount')  return Math.max(0, (u.first_month_rent||u.monthly_rent||0) - adj.amount - (discMap&&discMap[u.id]||0));
+  }
+  var base = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
+  return Math.max(0, base - (discMap&&discMap[u.id]||0));
+}
+
 // ══════════════════════════════════════════════════════
 // QUICK SWITCH TAB — works without needing tab button context
 // ══════════════════════════════════════════════════════
@@ -61,7 +73,7 @@ async function loadSmartDash(ym) {
     var [
       cashPaysRes, accrualPaysRes, depsRes, refDepsRes,
       unitsRes, prevCashRes, prevAccrualRes,
-      departRes, expRes, ownerRes, discRes, histRes, rentHistRes
+      departRes, expRes, ownerRes, discRes, histRes, rentHistRes, adjRes
     ] = await Promise.all([
       sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
@@ -79,7 +91,9 @@ async function loadSmartDash(ym) {
       // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار — لتصحيح الإيجار التاريخي
       sb.from('unit_history').select('unit_id,monthly_rent,end_date,snapshot_type')
         .gt('end_date', monEnd)
-        .order('end_date', {ascending: true})
+        .order('end_date', {ascending: true}),
+      sb.from('rent_adjustments').select('unit_id,adjustment_type,amount')
+        .eq('month', monStart)
     ]);
 
     var allUnits   = unitsRes.data||[];
@@ -95,6 +109,8 @@ async function loadSmartDash(ym) {
     var owners     = ownerRes.data||[];
     var discMap    = {};
     (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
+    var adjustMap  = {};
+    (adjRes.data||[]).forEach(function(a){ adjustMap[a.unit_id] = {type: a.adjustment_type, amount: a.amount}; });
 
     // historicRentMap: يتبنى بعد بناء units عشان نتأكد المستأجر كان في الشهر فعلاً
     var historicRentMap = {};
@@ -197,7 +213,7 @@ async function loadSmartDash(ym) {
       var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
       // لو شهر تاريخي وإيجار الوحدة اتغير بعده — استخدم الإيجار القديم (بس مش للسابقين)
       if(historicRentMap[u.id] && !u._isFormerTenant) baseRent = historicRentMap[u.id];
-      return s + Math.max(0, baseRent - (discMap[u.id]||0));
+      return s + calcEffectiveRent(u, discMap, adjustMap);
     }, 0);
 
     // ── CASH totals ──
@@ -226,8 +242,7 @@ async function loadSmartDash(ym) {
     var paidCount=0, partCount=0, unpaidCount=0;
     allInMonth.forEach(function(u){
       var got  = accrualPaidMap[u.id]||0;
-      var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
-      var rent = Math.max(0, baseRent - (discMap[u.id]||0));
+      var rent = calcEffectiveRent(u, discMap, adjustMap);
       if(rent === 0) return;
       if(got >= rent) paidCount++;
       else if(got > 0) partCount++;

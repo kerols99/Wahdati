@@ -57,6 +57,18 @@ function _pickDepositForReport(depRows, monYM) {
 // ══════════════════════════════════════════════════════
 
 
+// helper: يحسب الإيجار الفعلي للوحدة مع مراعاة adjustMap و discMap
+function calcEffectiveRent(u, discMap, adjustMap) {
+  var adj = adjustMap && adjustMap[u.id];
+  if(adj) {
+    if(adj.type === 'override')   return Math.max(0, adj.amount);
+    if(adj.type === 'surcharge')  return Math.max(0, (u.first_month_rent||u.monthly_rent||0) + adj.amount - (discMap&&discMap[u.id]||0));
+    if(adj.type === 'discount')   return Math.max(0, (u.first_month_rent||u.monthly_rent||0) - adj.amount - (discMap&&discMap[u.id]||0));
+  }
+  var base = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
+  return Math.max(0, base - (discMap&&discMap[u.id]||0));
+}
+
 // ══════════════════════════════════════════════════════
 // buildMonthSnapshot(monYM) — Source of Truth
 // Read Only — NO INSERT / UPDATE / DELETE
@@ -77,7 +89,7 @@ async function buildMonthSnapshot(monYM) {
   })();
 
   // ── Queries ──
-  var [unitsRes, histRes, discRes, rentHistRes] = await Promise.all([
+  var [unitsRes, histRes, discRes, rentHistRes, adjRes] = await Promise.all([
     sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,tenant_name2,is_vacant,start_date,deposit,phone,language,unit_status'),
     sb.from('unit_history').select('unit_id,apartment,room,tenant_name,tenant_name2,monthly_rent,first_month_rent,deposit,start_date,end_date,snapshot_type')
       .gte('end_date', monStart),
@@ -86,7 +98,9 @@ async function buildMonthSnapshot(monYM) {
       .gte('end_date', monStart),
     sb.from('unit_history').select('unit_id,monthly_rent,end_date,snapshot_type')
       .gt('end_date', monEnd)
-      .order('end_date', {ascending: true})
+      .order('end_date', {ascending: true}),
+    sb.from('rent_adjustments').select('unit_id,adjustment_type,amount')
+      .eq('month', monStart)
   ]);
 
   var allUnits  = unitsRes.data||[];
@@ -95,6 +109,10 @@ async function buildMonthSnapshot(monYM) {
 
   var discMap = {};
   (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
+
+  // adjustMap: unit_id → {type, amount} — rent override/discount/surcharge للشهر ده
+  var adjustMap = {};
+  (adjRes.data||[]).forEach(function(a){ adjustMap[a.unit_id] = {type: a.adjustment_type, amount: a.amount}; });
 
   // historicRentMap
   var historicRentMap = {};
@@ -187,7 +205,7 @@ async function buildMonthSnapshot(monYM) {
     });
   }
 
-  return { units: units, discMap: discMap, monStart: monStart, monEnd: monEnd };
+  return { units: units, discMap: discMap, adjustMap: adjustMap, monStart: monStart, monEnd: monEnd };
 }
 window.buildMonthSnapshot = buildMonthSnapshot;
 
@@ -233,6 +251,7 @@ async function loadMonthly(btn) {
     // units من buildMonthSnapshot — Source of Truth
     var units    = snapResult.units;
     var discMap  = snapResult.discMap;
+    var adjustMap = snapResult.adjustMap || {};
     var allUnits = units; // للتوافق مع الكود التالي
 
     var pays         = paysRes.data||[];
@@ -289,7 +308,7 @@ async function loadMonthly(btn) {
     });
 
     // حفظ بيانات الشهر عشان exportPDF يستخدمها بدون ما يعمل fetch تاني
-    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap, refundedDeps: refundedDepsRes.data||[] };
+    window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap, adjustMap: adjustMap, refundedDeps: refundedDepsRes.data||[] };
 
     // depRawMap: all deposit rows per unit_id AND per apartment-room
     var depRawMap = {};
@@ -343,9 +362,7 @@ async function loadMonthly(btn) {
     // ── Grand Totals ──
     var totalRent=0, totalRentColl=0, totalDeps=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
-      // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
-      var _effectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
-      _effectiveRent = Math.max(0, _effectiveRent - (discMap[u.id]||0));
+      var _effectiveRent = calcEffectiveRent(u, discMap, adjustMap);
       totalRent     += _effectiveRent;
       var _pk1=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk1;
       var _startYM2 = (u.start_date||'').slice(0,7);
@@ -380,8 +397,7 @@ async function loadMonthly(btn) {
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,coll:0,deps:0};
       apts[apt].units.push({...u, _isNew: isNewForMonth(u.start_date||'')});
-      var _aptEffectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
-      _aptEffectiveRent = Math.max(0, _aptEffectiveRent - (discMap[u.id]||0));
+      var _aptEffectiveRent = calcEffectiveRent(u, discMap, adjustMap);
       apts[apt].rent     += _aptEffectiveRent;
       var _pk3=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk3;
       var _startYM3 = (u.start_date||'').slice(0,7);
@@ -483,9 +499,7 @@ async function loadMonthly(btn) {
           var dep = _pickDepositForReport(_depRows, monYM);
           var rentPaid=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var isNew    = u._isNew;
-          // لو عنده first_month_rent (سواء مستأجر حالي أو سابق) — استخدمه
-          var effectiveRent = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
-          effectiveRent = Math.max(0, effectiveRent - (discMap[u.id]||0));
+          var effectiveRent = calcEffectiveRent(u, discMap, adjustMap);
           var showDep  = dep > 0; // show if deposit was received this month (regardless of isNew)
           var rem      = u._isVacantPaid ? 0 : Math.max(0, effectiveRent - rentPaid);
           var overpaid = (!u._isVacantPaid && effectiveRent > 0 && rentPaid > effectiveRent) ? (rentPaid - effectiveRent) : 0;
@@ -1124,10 +1138,14 @@ async function exportPDF(type, mon) {
       if(amt>0) depMap[u.id] = amt;
     });
 
-    // discMap للـ PDF — من _pdfData اللي loadMonthly حسبه
+    // discMap و adjustMap للـ PDF — من _pdfData اللي loadMonthly حسبه
     var _pdfDiscMap = {};
     if(window._pdfData && window._pdfData.discMap) {
       _pdfDiscMap = window._pdfData.discMap;
+    }
+    var _pdfAdjustMap = {};
+    if(window._pdfData && window._pdfData.adjustMap) {
+      _pdfAdjustMap = window._pdfData.adjustMap;
     }
 
     // totalRefunds — محتاجه في جدول المقارنة
@@ -1147,9 +1165,8 @@ async function exportPDF(type, mon) {
     var totalRent=0, totalRentColl=0, totalExp=0, totalOwner=0;
     units.forEach(function(u){
       // نفس منطق loadMonthly: first_month_rent + discount + historicRent
-      var baseRent = (u.start_date && u.start_date.slice(0,7)===monYM && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
-      var disc = _pdfDiscMap[u.id]||0;
-      totalRent += Math.max(0, baseRent - disc);
+      var eff = calcEffectiveRent(u, _pdfDiscMap, _pdfAdjustMap);
+      totalRent += eff;
       var _pk2=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); totalRentColl += _pk2;
       // depMap used only for per-room display — not for grand total
     });
@@ -1165,8 +1182,7 @@ async function exportPDF(type, mon) {
       var apt = String(u.apartment);
       if(!apts[apt]) apts[apt]={units:[],rent:0,rentColl:0,deps:0};
       apts[apt].units.push(u);
-      var _baseR = (u.start_date && u.start_date.slice(0,7)===monYM && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
-      apts[apt].rent     += Math.max(0, _baseR - (_pdfDiscMap[u.id]||0));
+      apts[apt].rent     += calcEffectiveRent(u, _pdfDiscMap, _pdfAdjustMap);
       var _pk4=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0); apts[apt].rentColl += _pk4;
       apts[apt].deps     += depMap[u.id]||0;
     });
@@ -1208,8 +1224,9 @@ async function exportPDF(type, mon) {
         g.units.slice().sort(function(a,b){return Number(a.room)-Number(b.room);}).forEach(function(u){
           var dep  = depMap[u.id]||0;
           var got=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
-          var rem  = Math.max(0,(u.monthly_rent||0)-got);
-          var st   = got>=(u.monthly_rent||0)&&(u.monthly_rent||0)>0?'✅':got>0?'⚠️':'❌';
+          var _pdfRent = calcEffectiveRent(u, _pdfDiscMap, _pdfAdjustMap);
+          var rem  = Math.max(0, _pdfRent - got);
+          var st   = got>=_pdfRent&&_pdfRent>0?'✅':got>0?'⚠️':'❌';
           aptHTML += '<tr>'
             +TD(u.room)
             +TD(u.tenant_name||(u.tenant_name2?u.tenant_name2:'—'))
