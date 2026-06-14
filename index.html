@@ -442,11 +442,35 @@
 </div>
 <div class="tpanel" id="rVacant">
 <div style="background:var(--red)12;border:1px solid var(--red)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
-  🏚️ <b style="color:var(--red)">تقرير الوحدات الشاغرة التاريخي</b> — Month-End Snapshot
+  🏚️ <b style="color:var(--red)">تقرير الشاغر الفعلي</b> — الوحدات الشاغرة فعلياً خلال الشهر
 </div>
 <input class="inp" id="rvacant-month" type="month" style="margin-bottom:8px"/>
-<button class="btn" style="width:100%;font-size:.82rem;background:var(--red)22;border:1.5px solid var(--red)55;color:var(--red);margin-bottom:4px" onclick="loadVacantHistoricalReport(this)">🏚️ عرض الوحدات الشاغرة</button>
+<button class="btn" style="width:100%;font-size:.82rem;background:var(--red)22;border:1.5px solid var(--red)55;color:var(--red);margin-bottom:4px" onclick="loadVacantActualReport(this)">🏚️ الشاغر الفعلي</button>
 <div id="rVacantOut" style="margin-top:12px"></div>
+</div>
+<div class="tpanel" id="rEndOfMonth">
+<div style="background:var(--amber)12;border:1px solid var(--amber)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
+  📤 <b style="color:var(--amber)">خروج آخر الشهر</b> — متاح للشهر القادم
+</div>
+<input class="inp" id="reom-month" type="month" style="margin-bottom:8px"/>
+<button class="btn" style="width:100%;font-size:.82rem;background:var(--amber)22;border:1.5px solid var(--amber)55;color:var(--amber);margin-bottom:4px" onclick="loadEndOfMonthReport(this)">📤 خروج آخر الشهر</button>
+<div id="rEndOfMonthOut" style="margin-top:12px"></div>
+</div>
+<div class="tpanel" id="rInternalTransfers">
+<div style="background:var(--accent)12;border:1px solid var(--accent)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
+  🔄 <b style="color:var(--accent)">النقل الداخلي</b> — خلال الشهر
+</div>
+<input class="inp" id="rit-month" type="month" style="margin-bottom:8px"/>
+<button class="btn" style="width:100%;font-size:.82rem;background:var(--accent)22;border:1.5px solid var(--accent)55;color:var(--accent);margin-bottom:4px" onclick="loadInternalTransfersReport(this)">🔄 النقل الداخلي</button>
+<div id="rInternalTransfersOut" style="margin-top:12px"></div>
+</div>
+<div class="tpanel" id="rNewTenants">
+<div style="background:var(--green)12;border:1px solid var(--green)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
+  🆕 <b style="color:var(--green)">المستأجرين الجدد</b> — خلال الشهر
+</div>
+<input class="inp" id="rnew-month" type="month" style="margin-bottom:8px"/>
+<button class="btn" style="width:100%;font-size:.82rem;background:var(--green)22;border:1.5px solid var(--green)55;color:var(--green);margin-bottom:4px" onclick="loadNewTenantsReport(this)">🆕 المستأجرين الجدد</button>
+<div id="rNewTenantsOut" style="margin-top:12px"></div>
 </div>
 <div class="tpanel" id="rAccrualCash">
 <div style="background:var(--accent)12;border:1px solid var(--accent)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">

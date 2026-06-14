@@ -3,15 +3,18 @@
 //           Late Payers, Forecast, Month Comparison
 
 // helper مشترك — نفسه في reports.js
-function calcEffectiveRent(u, discMap, adjustMap) {
+function calcEffectiveRent(u, discMap, adjustMap, monYM) {
   var adj = adjustMap && adjustMap[u.id];
   if(adj) {
-    if(adj.type === 'override')  return Math.max(0, adj.amount);
-    if(adj.type === 'surcharge') return Math.max(0, (u.first_month_rent||u.monthly_rent||0) + adj.amount - (discMap&&discMap[u.id]||0));
-    if(adj.type === 'discount')  return Math.max(0, (u.first_month_rent||u.monthly_rent||0) - adj.amount - (discMap&&discMap[u.id]||0));
+    if(adj.type === 'override')  return Math.max(0, Number(adj.amount||0));
+    if(adj.type === 'surcharge') return Math.max(0, Number(u.monthly_rent||0) + Number(adj.amount||0) - Number((discMap&&discMap[u.id])||0));
+    if(adj.type === 'discount')  return Math.max(0, Number(u.monthly_rent||0) - Number(adj.amount||0) - Number((discMap&&discMap[u.id])||0));
   }
-  var base = u.first_month_rent ? u.first_month_rent : (u.monthly_rent||0);
-  return Math.max(0, base - (discMap&&discMap[u.id]||0));
+  var base = Number(u.monthly_rent || 0);
+  if(monYM && u.start_date && String(u.start_date).slice(0,7) === monYM && u.first_month_rent) {
+    base = Number(u.first_month_rent || base);
+  }
+  return Math.max(0, base - Number((discMap&&discMap[u.id])||0));
 }
 
 // ══════════════════════════════════════════════════════
@@ -191,6 +194,12 @@ async function loadSmartDash(ym) {
           historicRentMap[h.unit_id] = h.monthly_rent||0;
         }
       });
+      // تطبيق historicRentMap — نفس منطق reports.js
+      allInMonth = allInMonth.map(function(u){
+        var histRent = historicRentMap[u.id];
+        if(histRent && !u._isFormerTenant) return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
+        return u;
+      });
     }
 
     // ── Unit counts للشهر ──
@@ -209,11 +218,7 @@ async function loadSmartDash(ym) {
 
     // ── EXPECTED ──
     var expected = allInMonth.reduce(function(s,u){
-      // لو مستأجر جديد في الشهر ده وعنده first_month_rent — استخدمه
-      var baseRent = (u.start_date && u.start_date.slice(0,7)===ym && u.first_month_rent) ? u.first_month_rent : (u.monthly_rent||0);
-      // لو شهر تاريخي وإيجار الوحدة اتغير بعده — استخدم الإيجار القديم (بس مش للسابقين)
-      if(historicRentMap[u.id] && !u._isFormerTenant) baseRent = historicRentMap[u.id];
-      return s + calcEffectiveRent(u, discMap, adjustMap);
+      return s + calcEffectiveRent(u, discMap, adjustMap, ym);
     }, 0);
 
     // ── CASH totals ──
@@ -242,7 +247,7 @@ async function loadSmartDash(ym) {
     var paidCount=0, partCount=0, unpaidCount=0;
     allInMonth.forEach(function(u){
       var got  = accrualPaidMap[u.id]||0;
-      var rent = calcEffectiveRent(u, discMap, adjustMap);
+      var rent = calcEffectiveRent(u, discMap, adjustMap, ym);
       if(rent === 0) return;
       if(got >= rent) paidCount++;
       else if(got > 0) partCount++;
