@@ -102,6 +102,9 @@ function getVacancyMonth(end_date) {
   }
   return ym;
 }
+window.getEffectiveStartMonth = getEffectiveStartMonth;
+window.getVacancyMonth = getVacancyMonth;
+window.calcEffectiveRent = calcEffectiveRent;
 
 // ══════════════════════════════════════════════════════
 // buildMonthSnapshot(monYM) — Source of Truth
@@ -2195,10 +2198,6 @@ async function loadVacantActualReport(btn) {
   var monYM    = monEl.value.slice(0,7);
   var monStart = monYM+'-01';
   var monEnd   = window.monthEnd(monYM);
-  var monNextStart = (function(){
-    var d = new Date(monYM+'-01'); d.setMonth(d.getMonth()+1);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
-  })();
   var orig = btn ? btn.innerHTML : '';
   if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
 
@@ -2215,10 +2214,14 @@ async function loadVacantActualReport(btn) {
     var results = [];
 
     allUnits.forEach(function(u) {
-      // هل عندها مستأجر حالي دخل قبل أو خلال الشهر ولسه ساكن؟
+      // هل عندها مستأجر حالي دخل (فعلياً) قبل أو خلال الشهر ولسه ساكن؟
+      // استخدام getEffectiveStartMonth: لو start_date = آخر يوم الشهر السابق، فهو دخول لهذا الشهر
       var isOccupiedNow = !u.is_vacant && u.unit_status !== 'available' && u.unit_status !== 'maintenance';
-      if(isOccupiedNow && u.start_date && u.start_date <= monEnd) {
-        return; // فيها مستأجر — مش شاغرة
+      if(isOccupiedNow && u.start_date) {
+        var effStartYM = getEffectiveStartMonth(u.start_date);
+        if(effStartYM && effStartYM <= monYM) {
+          return; // فيها مستأجر دخل في هذا الشهر أو قبله — مش شاغرة
+        }
       }
 
       // آخر سجل لهذه الوحدة (مش rent_change ولا internal_transfer_in)
@@ -2230,23 +2233,29 @@ async function loadVacantActualReport(btn) {
 
       var lastTenant = relevantHist[0] || null;
       var endDate = lastTenant ? (lastTenant.end_date||'') : null;
+      var vacMonth = endDate ? getVacancyMonth(endDate) : null;
 
-      // ── القواعد ──
-      // لا يظهر إذا خرج آخر يوم في الشهر
-      if(endDate === monEnd) return;
-      // لا يظهر إذا end_date = أول يوم الشهر التالي
-      if(endDate === monNextStart) return;
-      // لا يظهر إذا في مستأجر جديد دخل قبل نهاية الشهر (وهو ده isOccupiedNow اللي فاتت فوق، لكن لازم نتأكد من unit_history الجديد كمان)
+      // ── القاعدة (getVacancyMonth) ──
+      // لو vacMonth !== monYM → الوحدة شاغرة في شهر مختلف (مش هذا الشهر) → لا تظهر
+      if(vacMonth && vacMonth !== monYM) {
+        // لكن لو vacMonth < monYM (الوحدة شاغرة من شهر سابق ولسه شاغرة) — تظهر
+        if(!(vacMonth < monYM)) return;
+      }
+
+      // لا يظهر إذا في مستأجر جديد دخل (فعلياً) قبل نهاية الشهر
       var newerTenant = hist.find(function(h){
-        return h.unit_id === u.id &&
-               h.snapshot_type !== 'rent_change' &&
-               h.snapshot_type !== 'internal_transfer_out' &&
-               (h.start_date||'') && (h.start_date||'') <= monEnd &&
-               (!endDate || (h.end_date||'') > endDate);
+        if(h.unit_id !== u.id) return false;
+        if(h.snapshot_type === 'rent_change' || h.snapshot_type === 'internal_transfer_out') return false;
+        var effStart = getEffectiveStartMonth(h.start_date);
+        if(!effStart || effStart > monYM) return false;
+        return (!endDate || (h.end_date||'') > endDate);
       });
       if(newerTenant) return;
 
-      // لازم يكون: خرج قبل بداية الشهر، أو خرج داخل الشهر قبل آخر يوم
+      // ── القاعدة الصريحة لـ getVacancyMonth(end_date) === monYM ──
+      // end_date = 2026-03-01 (أول الشهر)  → شاغر من 2026-03-01 (نفس اليوم)
+      // end_date = 2026-03-15 (وسط الشهر)  → شاغر من 2026-03-16 (اليوم التالي)
+      // end_date = 2026-02-28 (آخر الشهر السابق) → غطّاها فرع vacMonth < monYM فوق (vacantFrom = monStart)
       var isVacantThisMonth = false;
       var vacantFrom = monStart;
       var daysVacant = 0;
@@ -2256,18 +2265,26 @@ async function loadVacantActualReport(btn) {
         isVacantThisMonth = true;
         vacantFrom = monStart;
         daysVacant = Math.round((new Date(monEnd) - new Date(monStart))/(1000*60*60*24)) + 1;
-      } else if(endDate < monStart) {
-        // خرج قبل بداية الشهر — شاغرة طول الشهر
+      } else if(vacMonth < monYM) {
+        // شاغرة من شهر سابق (يشمل endDate = آخر يوم الشهر السابق) — شاغرة طول هذا الشهر
         isVacantThisMonth = true;
         vacantFrom = monStart;
         daysVacant = Math.round((new Date(monEnd) - new Date(monStart))/(1000*60*60*24)) + 1;
-      } else if(endDate >= monStart && endDate < monEnd) {
-        // خرج داخل الشهر قبل آخر يوم — شاغرة من تاريخ الخروج
+      } else if(vacMonth === monYM) {
+        var fromDate;
+        if(endDate.slice(8,10) === '01') {
+          // end_date = أول الشهر → شاغر من نفس اليوم
+          fromDate = endDate;
+        } else {
+          // end_date وسط الشهر → شاغر من اليوم التالي
+          var _d = new Date(endDate); _d.setDate(_d.getDate()+1);
+          fromDate = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        }
         isVacantThisMonth = true;
-        vacantFrom = endDate;
-        daysVacant = Math.round((new Date(monEnd) - new Date(endDate))/(1000*60*60*24));
+        vacantFrom = fromDate;
+        daysVacant = Math.round((new Date(monEnd) - new Date(fromDate))/(1000*60*60*24)) + 1;
       }
-      // لو endDate === monEnd أو endDate === monNextStart — already returned above
+      // لو vacMonth > monYM (شاغرة من شهر قادم) — already returned above
 
       if(!isVacantThisMonth) return;
 
@@ -2363,22 +2380,28 @@ async function loadEndOfMonthReport(btn) {
   var monEl = document.getElementById('reom-month');
   if(!monEl || !monEl.value) { toast(LANG==='ar'?'اختر الشهر':'Choose month','err'); return; }
   var monYM    = monEl.value.slice(0,7);
-  var monEnd   = window.monthEnd(monYM);
-  var monNextStart = (function(){
-    var d = new Date(monYM+'-01'); d.setMonth(d.getMonth()+1);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01';
+  var monStart = monYM+'-01';
+  var nextYM = (function(){
+    var d = new Date(monStart); d.setMonth(d.getMonth()+1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
   })();
+  var monNextStart = nextYM+'-01';
   var orig = btn ? btn.innerHTML : '';
   if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
 
   try {
+    // نطاق واسع: end_date بين أول هذا الشهر وأول الشهر التالي
+    // (يغطي: آخر يوم هذا الشهر، أول يوم الشهر التالي، أي end_date آخر للشهر هذا)
     var { data: hist } = await sb.from('unit_history')
       .select('unit_id,apartment,room,tenant_name,phone,monthly_rent,deposit,start_date,end_date,snapshot_type,notes')
-      .or('end_date.eq.'+monEnd+',end_date.eq.'+monNextStart);
+      .gte('end_date', monStart)
+      .lte('end_date', monNextStart);
 
     var results = (hist||[]).filter(function(h){
       // استبعد internal_transfer_in و rent_change
-      return h.snapshot_type !== 'rent_change' && h.snapshot_type !== 'internal_transfer_in';
+      if(h.snapshot_type === 'rent_change' || h.snapshot_type === 'internal_transfer_in') return false;
+      // الوحدة تصبح شاغرة في الشهر التالي ⟺ getVacancyMonth(end_date) === nextYM
+      return getVacancyMonth(h.end_date) === nextYM;
     }).map(function(h){
       return {
         apartment:    h.apartment,
@@ -2471,21 +2494,28 @@ async function loadInternalTransfersReport(btn) {
   var monYM    = monEl.value.slice(0,7);
   var monStart = monYM+'-01';
   var monEnd   = window.monthEnd(monYM);
+  var prevMonthLastDay = (function(){
+    var d = new Date(monStart); d.setDate(d.getDate()-1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  })();
   var orig = btn ? btn.innerHTML : '';
   if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
 
   try {
+    // نطاق واسع يشمل آخر يوم من الشهر السابق — getEffectiveStartMonth بيحدد الشهر الفعلي
     var [histOutRes, transfersRes] = await Promise.all([
       sb.from('unit_history').select('unit_id,apartment,room,tenant_name,phone,monthly_rent,deposit,start_date,end_date,snapshot_type,notes')
         .eq('snapshot_type', 'internal_transfer_out')
-        .gte('end_date', monStart)
+        .gte('end_date', prevMonthLastDay)
         .lte('end_date', monEnd),
       sb.from('internal_transfers').select('from_unit_id,to_unit_id,from_snapshot,to_snapshot,transfer_date,notes')
-        .gte('transfer_date', monStart)
+        .gte('transfer_date', prevMonthLastDay)
         .lte('transfer_date', monEnd)
     ]);
 
-    var transfersOut = histOutRes.data || [];
+    var transfersOut = (histOutRes.data || []).filter(function(h){
+      return getEffectiveStartMonth(h.end_date) === monYM;
+    });
     var transfersTbl = transfersRes.data || [];
 
     var results = transfersOut.map(function(h){

@@ -17,6 +17,29 @@ function calcEffectiveRent(u, discMap, adjustMap, monYM) {
   return Math.max(0, base - Number((discMap&&discMap[u.id])||0));
 }
 
+// helpers مشتركة — نفسهم في reports.js (Boundary Rule)
+function getEffectiveStartMonth(start_date) {
+  if(!start_date) return null;
+  var d  = String(start_date).slice(0,10);
+  var ym = d.slice(0,7);
+  if(d === window.monthEnd(ym)) {
+    var dt = new Date(ym+'-01'); dt.setMonth(dt.getMonth()+1);
+    return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  }
+  return ym;
+}
+
+function getVacancyMonth(end_date) {
+  if(!end_date) return null;
+  var d  = String(end_date).slice(0,10);
+  var ym = d.slice(0,7);
+  if(d === window.monthEnd(ym)) {
+    var dt = new Date(ym+'-01'); dt.setMonth(dt.getMonth()+1);
+    return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  }
+  return ym;
+}
+
 // ══════════════════════════════════════════════════════
 // QUICK SWITCH TAB — works without needing tab button context
 // ══════════════════════════════════════════════════════
@@ -126,13 +149,13 @@ async function loadSmartDash(ym) {
     // 1. ابدأ بالمستأجرين الحاليين اللي دخلوا في الشهر أو قبله
     var units = allUnits.filter(function(u){
       if(!isDashboardOccupied(u)) return false;
-      var startYM = (u.start_date||'').slice(0,7);
-      return !startYM || startYM <= monYMcheck;
+      var effStartYM = getEffectiveStartMonth(u.start_date);
+      return !effStartYM || effStartYM <= monYMcheck;
     });
 
     var existingIds = new Set(units.map(function(u){ return u.id; }));
     var currentStartMap = {};
-    units.forEach(function(u){ currentStartMap[u.id] = (u.start_date||'').slice(0,7); });
+    units.forEach(function(u){ currentStartMap[u.id] = getEffectiveStartMonth(u.start_date) || ''; });
 
     // 2. من unit_history — نفس فلترة التقرير
     var histForDash = hist.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
@@ -143,13 +166,16 @@ async function loadSmartDash(ym) {
       var uniqueKey = String(h.unit_id)+'_'+String(h.end_date||'');
       if(addedHistKeys.has(uniqueKey)) return;
 
-      var endDateYM  = (h.end_date||'').slice(0,7);
-      var startDateYM = (h.start_date||'').slice(0,7);
+      var vacMonth   = h.end_date ? getVacancyMonth(h.end_date) : null;
+      var startDateYM = getEffectiveStartMonth(h.start_date) || '';
 
-      if(h.end_date && endDateYM < monYMcheck) return;
-      if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
-      // internal_transfer_out: اعرضه بس لو حصل في آخر يوم من الشهر
-      if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck && h.end_date !== monEnd) return;
+      // لو الوحدة بقت شاغرة قبل هذا الشهر بفترة طويلة — سجل قديم، تجاهله
+      if(vacMonth && vacMonth < monYMcheck) return;
+      // لو الوحدة بقت شاغرة بالضبط في هذا الشهر (end_date = آخر يوم الشهر السابق أو أول يوم هذا الشهر)
+      // — هذا السجل يخص الشهر السابق، مش former tenant لهذا الشهر
+      if(vacMonth && vacMonth === monYMcheck) return;
+      // internal_transfer_out: اعرضه بس لو النقل (فعلياً) حصل في هذا الشهر
+      if(h.snapshot_type === 'internal_transfer_out' && getEffectiveStartMonth(h.end_date) !== monYMcheck) return;
       if(h.snapshot_type === 'internal_transfer_in') return;
       if(h.snapshot_type === 'rent_change') return;
 
