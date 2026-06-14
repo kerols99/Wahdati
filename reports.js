@@ -73,6 +73,37 @@ function calcEffectiveRent(u, discMap, adjustMap, monYM) {
 }
 
 // ══════════════════════════════════════════════════════
+// Boundary Rule Helpers — موحّدة لكل التقارير
+// ══════════════════════════════════════════════════════
+
+// لو start_date = آخر يوم في شهره → يُحسب دخول للشهر التالي
+// وإلا → شهر start_date نفسه
+function getEffectiveStartMonth(start_date) {
+  if(!start_date) return null;
+  var d  = String(start_date).slice(0,10);
+  var ym = d.slice(0,7);
+  if(d === window.monthEnd(ym)) {
+    var dt = new Date(ym+'-01'); dt.setMonth(dt.getMonth()+1);
+    return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  }
+  return ym;
+}
+
+// لو end_date = آخر يوم في الشهر → شاغر الشهر التالي
+// لو end_date = أول يوم في الشهر → شاغر نفس الشهر
+// غير ذلك → شهر end_date نفسه
+function getVacancyMonth(end_date) {
+  if(!end_date) return null;
+  var d  = String(end_date).slice(0,10);
+  var ym = d.slice(0,7);
+  if(d === window.monthEnd(ym)) {
+    var dt = new Date(ym+'-01'); dt.setMonth(dt.getMonth()+1);
+    return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  }
+  return ym;
+}
+
+// ══════════════════════════════════════════════════════
 // buildMonthSnapshot(monYM) — Source of Truth
 // Read Only — NO INSERT / UPDATE / DELETE
 // يبني قائمة المستأجرين الذين كانوا موجودين فعلياً في الشهر المختار
@@ -2552,7 +2583,12 @@ async function loadNewTenantsReport(btn) {
   if(btn) { btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
 
   try {
-    var [unitsRes, movesRes, depsRes, histRes] = await Promise.all([
+    var prevMonthLastDay = (function(){
+      var d = new Date(monStart); d.setDate(d.getDate()-1);
+      return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    })();
+
+    var [unitsRes, movesRes, depsRes, histRes, histStartRes] = await Promise.all([
       sb.from('units').select('id,apartment,room,monthly_rent,first_month_rent,tenant_name,phone,persons_count,start_date,deposit'),
       sb.from('moves').select('unit_id,apartment,room,tenant_name,phone,new_rent,new_deposit,new_persons,new_start_date,type,status')
         .eq('type','arrive').eq('status','done')
@@ -2561,7 +2597,11 @@ async function loadNewTenantsReport(btn) {
         .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
       sb.from('unit_history').select('unit_id,snapshot_type,start_date,end_date')
         .eq('snapshot_type','internal_transfer_in')
-        .gte('start_date', monStart).lte('start_date', monEnd)
+        .gte('start_date', monStart).lte('start_date', monEnd),
+      // مصدر ثالث: سجلات unit_history بتاريخ دخول يطابق getEffectiveStartMonth === monYM
+      // (يشمل آخر يوم من الشهر السابق)
+      sb.from('unit_history').select('unit_id,apartment,room,tenant_name,monthly_rent,first_month_rent,deposit,persons_count,phone,start_date,end_date,snapshot_type')
+        .gte('start_date', prevMonthLastDay).lte('start_date', monEnd)
     ]);
 
     var allUnits = unitsRes.data||[];
@@ -2577,13 +2617,24 @@ async function loadNewTenantsReport(btn) {
     deps.forEach(function(d){ depDateMap[d.unit_id] = d.deposit_received_date; });
 
     var results = [];
-    var seenUnits = new Set();
 
-    // من units: start_date داخل الشهر
+    // dedup موحّد لكل المصادر الثلاثة
+    function newTenantKey(x) {
+      return [
+        String(x.apartment || ''),
+        String(x.room || ''),
+        String(x.tenant_name || x.tenant || '').trim().toLowerCase(),
+        String(x.start_date || x.startDate || '').slice(0,10)
+      ].join('|');
+    }
+    var seenNewTenantKeys = new Set();
+
+    // 1. من units: getEffectiveStartMonth(start_date) === monYM
     allUnits.forEach(function(u){
-      var startYM = (u.start_date||'').slice(0,7);
-      if(startYM !== monYM) return;
-      seenUnits.add(u.id);
+      if(getEffectiveStartMonth(u.start_date) !== monYM) return;
+      var key = newTenantKey(u);
+      if(seenNewTenantKeys.has(key)) return;
+      seenNewTenantKeys.add(key);
       results.push({
         apartment:      u.apartment,
         room:           u.room,
@@ -2599,10 +2650,11 @@ async function loadNewTenantsReport(btn) {
       });
     });
 
-    // من moves: arrive + done في الشهر، لو الوحدة لسه مش متضافة
+    // 2. من moves: arrive + done في الشهر
     moves.forEach(function(m){
-      if(seenUnits.has(m.unit_id)) return;
-      seenUnits.add(m.unit_id);
+      var key = newTenantKey(m);
+      if(seenNewTenantKeys.has(key)) return;
+      seenNewTenantKeys.add(key);
       results.push({
         apartment:      m.apartment,
         room:           m.room,
@@ -2615,6 +2667,35 @@ async function loadNewTenantsReport(btn) {
         depositPaid:    m.new_deposit || depMap[m.unit_id] || 0,
         depositDate:    depDateMap[m.unit_id] || '—',
         source:         transferIns.has(m.unit_id) ? 'internal_transfer_in' : 'new'
+      });
+    });
+
+    // 3. من unit_history: getEffectiveStartMonth(start_date) === monYM
+    //    مستأجرين دخلوا وغادروا داخل نفس الشهر أو قبل تحديث units
+    (histStartRes.data||[]).forEach(function(h){
+      if(getEffectiveStartMonth(h.start_date) !== monYM) return;
+      if(!h.tenant_name || h.tenant_name === '—' || h.tenant_name === '——') return;
+      if(!h.monthly_rent || h.monthly_rent <= 0) return;
+      if(h.snapshot_type === 'rent_change') return;
+      if(h.snapshot_type === 'internal_transfer_in') return;
+      if(h.snapshot_type === 'internal_transfer_out') return;
+
+      var key = newTenantKey(h);
+      if(seenNewTenantKeys.has(key)) return;
+      seenNewTenantKeys.add(key);
+
+      results.push({
+        apartment:      h.apartment,
+        room:           h.room,
+        tenant:         h.tenant_name || '—',
+        phone:          h.phone || '—',
+        startDate:      h.start_date,
+        personsCount:   h.persons_count || 0,
+        monthlyRent:    h.monthly_rent || 0,
+        firstMonthRent: h.first_month_rent || null,
+        depositPaid:    h.deposit || depMap[h.unit_id] || 0,
+        depositDate:    depDateMap[h.unit_id] || '—',
+        source:         'new'
       });
     });
 
