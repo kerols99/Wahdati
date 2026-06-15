@@ -2680,8 +2680,9 @@ async function loadNewTenantsReport(btn) {
       });
     });
 
-    // 2. من moves: arrive + done في الشهر
+    // 2. من moves: arrive + done — getEffectiveStartMonth(new_start_date) === monYM
     moves.forEach(function(m){
+      if(getEffectiveStartMonth(m.new_start_date) !== monYM) return;
       var key = newTenantKey(m);
       if(seenNewTenantKeys.has(key)) return;
       seenNewTenantKeys.add(key);
