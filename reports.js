@@ -2225,10 +2225,15 @@ async function loadVacantActualReport(btn) {
       }
 
       // آخر سجل لهذه الوحدة (مش rent_change ولا internal_transfer_in)
+      // استبعاد المستأجرين اللي دخلوا بعد نهاية هذا الشهر (getEffectiveStartMonth > monYM)
       var relevantHist = hist.filter(function(h){
-        return h.unit_id === u.id &&
-               h.snapshot_type !== 'rent_change' &&
-               h.snapshot_type !== 'internal_transfer_in';
+        if(h.unit_id !== u.id) return false;
+        if(h.snapshot_type === 'rent_change') return false;
+        if(h.snapshot_type === 'internal_transfer_in') return false;
+        // استبعد أي سجل دخل فعلياً في شهر لاحق
+        var effStart = getEffectiveStartMonth(h.start_date);
+        if(effStart && effStart > monYM) return false;
+        return true;
       }).sort(function(a,b){ return (b.end_date||'') > (a.end_date||'') ? 1 : -1; });
 
       var lastTenant = relevantHist[0] || null;
