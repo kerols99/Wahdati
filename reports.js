@@ -2701,14 +2701,15 @@ async function loadNewTenantsReport(btn) {
     });
 
     // 3. من unit_history: getEffectiveStartMonth(start_date) === monYM
-    //    مستأجرين دخلوا وغادروا داخل نفس الشهر أو قبل تحديث units
+    //    مستأجرين دخلوا وغادروا/انتقلوا داخل نفس الشهر أو قبل تحديث units
+    //    internal_transfer_out مسموح هنا — الشرط هو start_date (دخول الوحدة) لا end_date (الخروج/النقل)
+    //    internal_transfer_in مستثنى لأنه يمثل "النقل الوارد" لشخص موجود فعلياً ضمن نقل داخلي، وليس دخول جديد
     (histStartRes.data||[]).forEach(function(h){
       if(getEffectiveStartMonth(h.start_date) !== monYM) return;
       if(!h.tenant_name || h.tenant_name === '—' || h.tenant_name === '——') return;
       if(!h.monthly_rent || h.monthly_rent <= 0) return;
       if(h.snapshot_type === 'rent_change') return;
       if(h.snapshot_type === 'internal_transfer_in') return;
-      if(h.snapshot_type === 'internal_transfer_out') return;
 
       var key = newTenantKey(h);
       if(seenNewTenantKeys.has(key)) return;
