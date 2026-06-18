@@ -96,137 +96,39 @@ async function loadSmartDash(ym) {
     var _today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
     // ── Fetch all data ──
+    // ── Fetch data ──
     var [
-      cashPaysRes, accrualPaysRes, depsRes, refDepsRes,
-      unitsRes, prevCashRes, prevAccrualRes,
-      departRes, expRes, ownerRes, discRes, histRes, rentHistRes, adjRes
+      snapResult,
+      accrualPaysRes,
+      cashPaysRes, depsRes, refDepsRes,
+      prevCashRes, departRes, expRes, ownerRes
     ] = await Promise.all([
-      sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
+      buildMonthSnapshot(ym),
       sb.from('rent_payments').select('amount,unit_id').like('payment_month', ym+'%'),
+      sb.from('rent_payments').select('amount,unit_id').gte('payment_date',monStart).lte('payment_date',monEnd),
       sb.from('deposits').select('amount').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd),
       sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date',monStart).lte('refund_date',monEnd),
-      sb.from('units').select('id,monthly_rent,first_month_rent,is_vacant,unit_status,start_date,tenant_name'),
       sb.from('rent_payments').select('amount').gte('payment_date',prevYM+'-01').lte('payment_date',monthEnd(prevYM)),
-      sb.from('rent_payments').select('amount').like('payment_month', prevYM+'%'),
       sb.from('moves').select('unit_id').eq('type','depart').eq('status','pending').lte('move_date',monEnd),
       sb.from('expenses').select('amount').eq('period_month', ym+'-01'),
-      sb.from('owner_payments').select('amount').eq('period_month', ym+'-01'),
-      sb.from('unit_discounts').select('unit_id,discount_amount').lte('start_date',monEnd).gte('end_date',monStart),
-      sb.from('unit_history').select('unit_id,monthly_rent,first_month_rent,start_date,end_date,snapshot_type,tenant_name')
-        .gte('end_date', monStart).lte('end_date', monNext2Start),
-      // سجلات rent_change: وحدات اتغير إيجارها بعد الشهر المختار — لتصحيح الإيجار التاريخي
-      sb.from('unit_history').select('unit_id,monthly_rent,end_date,snapshot_type')
-        .gt('end_date', monEnd)
-        .order('end_date', {ascending: true}),
-      sb.from('rent_adjustments').select('unit_id,adjustment_type,amount')
-        .eq('month', monStart)
+      sb.from('owner_payments').select('amount').eq('period_month', ym+'-01')
     ]);
 
-    var allUnits   = unitsRes.data||[];
-    var hist       = histRes.data||[];
-    var cashPays   = cashPaysRes.data||[];
-    var accrualPays= accrualPaysRes.data||[];
-    var deps       = depsRes.data||[];
-    var refDeps    = refDepsRes.data||[];
-    var prevCash   = prevCashRes.data||[];
-    var prevAccrual= prevAccrualRes.data||[];
-    var departs    = departRes.data||[];
-    var exps       = expRes.data||[];
-    var owners     = ownerRes.data||[];
-    var discMap    = {};
-    (discRes.data||[]).forEach(function(d){ discMap[d.unit_id]=(discMap[d.unit_id]||0)+(d.discount_amount||0); });
-    var adjustMap  = {};
-    (adjRes.data||[]).forEach(function(a){ adjustMap[a.unit_id] = {type: a.adjustment_type, amount: a.amount}; });
+    // buildMonthSnapshot يرجع {units, discMap, adjustMap, monStart, monEnd}
+    var allInMonth = snapResult.units    || [];
+    var discMap    = snapResult.discMap  || {};
+    var adjustMap  = snapResult.adjustMap|| {};
 
-    // historicRentMap: يتبنى بعد بناء units عشان نتأكد المستأجر كان في الشهر فعلاً
-    var historicRentMap = {};
-    var _dashMonYM = ym;
-    var _dashNowYM = (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+    var allUnits    = (await sb.from('units').select('id,monthly_rent,is_vacant,unit_status,start_date,tenant_name')).data || [];
+    var accrualPays = accrualPaysRes.data||[];
+    var cashPays    = cashPaysRes.data||[];
+    var deps        = depsRes.data||[];
+    var refDeps     = refDepsRes.data||[];
+    var prevCash    = prevCashRes.data||[];
+    var departs     = departRes.data||[];
+    var exps        = expRes.data||[];
+    var owners      = ownerRes.data||[];
 
-    // ── بناء snapshot للشهر المختار — نفس منطق التقرير الشهري ──
-    var monYMcheck = ym;
-
-    // 1. ابدأ بالمستأجرين الحاليين اللي دخلوا في الشهر أو قبله
-    var units = allUnits.filter(function(u){
-      if(!isDashboardOccupied(u)) return false;
-      var effStartYM = getEffectiveStartMonth(u.start_date);
-      return !effStartYM || effStartYM <= monYMcheck;
-    });
-
-    var existingIds = new Set(units.map(function(u){ return u.id; }));
-    var currentStartMap = {};
-    units.forEach(function(u){ currentStartMap[u.id] = getEffectiveStartMonth(u.start_date) || ''; });
-
-    // 2. من unit_history — نفس فلترة التقرير
-    var histForDash = hist.filter(function(h){ return !h.start_date || h.start_date <= monEnd; });
-    histForDash.sort(function(a,b){ return (b.end_date||'') > (a.end_date||'') ? 1 : -1; });
-
-    var addedHistKeys = new Set();
-    histForDash.forEach(function(h){
-      var uniqueKey = String(h.unit_id)+'_'+String(h.end_date||'');
-      if(addedHistKeys.has(uniqueKey)) return;
-
-      var vacMonth   = h.end_date ? getVacancyMonth(h.end_date) : null;
-      var startDateYM = getEffectiveStartMonth(h.start_date) || '';
-
-      // لو الوحدة بقت شاغرة قبل هذا الشهر بفترة طويلة — سجل قديم، تجاهله
-      if(vacMonth && vacMonth < monYMcheck) return;
-      // لو الوحدة بقت شاغرة بالضبط في هذا الشهر (end_date = آخر يوم الشهر السابق أو أول يوم هذا الشهر)
-      // — هذا السجل يخص الشهر السابق، مش former tenant لهذا الشهر
-      if(vacMonth && vacMonth === monYMcheck) return;
-      // internal_transfer_out: اعرضه بس لو النقل (فعلياً) حصل في هذا الشهر
-      if(h.snapshot_type === 'internal_transfer_out' && getEffectiveStartMonth(h.end_date) !== monYMcheck) return;
-      if(h.snapshot_type === 'internal_transfer_in') return;
-      if(h.snapshot_type === 'rent_change') return;
-
-      var formerUnit = {
-        id: h.unit_id, monthly_rent: h.monthly_rent||0,
-        first_month_rent: h.first_month_rent||null,
-        start_date: h.start_date||null, tenant_name: h.tenant_name||null,
-        _isFormerTenant: true
-      };
-
-      if(!existingIds.has(h.unit_id)) {
-        addedHistKeys.add(uniqueKey);
-        units.push(formerUnit);
-        existingIds.add(h.unit_id);
-        currentStartMap[h.unit_id] = startDateYM;
-      } else {
-        var existing = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-        if(existing && (!existing.monthly_rent || existing.monthly_rent === 0)) {
-          var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-          if(idx > -1){ addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
-        } else {
-          var currentStartYM = currentStartMap[h.unit_id] || '';
-          if(currentStartYM > monYMcheck) {
-            var idx = units.findIndex(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-            if(idx > -1){ addedHistKeys.add(uniqueKey); units[idx] = formerUnit; currentStartMap[h.unit_id] = startDateYM; }
-          } else if(currentStartYM === monYMcheck) {
-            var currentUnit = units.find(function(u){ return u.id === h.unit_id && !u._isFormerTenant; });
-            var samePerson = currentUnit && currentUnit.tenant_name === h.tenant_name;
-            if(!samePerson){ addedHistKeys.add(uniqueKey); units.push(formerUnit); }
-          }
-        }
-      }
-    });
-
-    // كل المستأجرين في الشهر
-    var allInMonth = units;
-
-    // بناء historicRentMap بعد اكتمال allInMonth — نفس منطق التقرير بالظبط
-    if(_dashMonYM < _dashNowYM) {
-      (rentHistRes.data||[]).forEach(function(h){
-        if(!historicRentMap[h.unit_id]) {
-          historicRentMap[h.unit_id] = h.monthly_rent||0;
-        }
-      });
-      // تطبيق historicRentMap — نفس منطق reports.js
-      allInMonth = allInMonth.map(function(u){
-        var histRent = historicRentMap[u.id];
-        if(histRent && !u._isFormerTenant) return Object.assign({}, u, { monthly_rent: histRent, _rentFromHistory: true });
-        return u;
-      });
-    }
 
     // ── Unit counts للشهر ──
     var allUnitsCount   = allUnits.length;
@@ -238,7 +140,7 @@ async function loadSmartDash(ym) {
     var departSet   = new Set((departs||[]).map(function(d){ return d.unit_id; }));
     var currentOccupied = allUnits.filter(function(u){ return isDashboardOccupied(u) && (u.start_date||'').slice(0,7) <= ym; });
     var leaving     = currentOccupied.filter(function(u){ return departSet.has(u.id) || getUnitStatusKey(u)==='leaving_soon'; });
-    var newThisMonth= allInMonth.filter(function(u){ return u.start_date && u.start_date.slice(0,7)===ym; });
+    var newThisMonth= allInMonth.filter(function(u){ return getEffectiveStartMonth(u.start_date) === ym; });
     var reserved    = allUnits.filter(function(u){ return getUnitStatusKey(u)==='reserved'; });
     var maintenance = allUnits.filter(function(u){ return getUnitStatusKey(u)==='maintenance'; });
 
@@ -260,16 +162,23 @@ async function loadSmartDash(ym) {
     var prevCashTot = prevCash.reduce(function(s,p){ return s+(p.amount||0); },0);
 
     // ── Remaining & pct ──
-    var remaining = Math.max(0, expected - accrualPaid);
-    var pct       = expected>0 ? Math.round(accrualPaid/expected*100) : 0;
-    var diff      = cashRent - prevCashTot;
-    var diffPct   = prevCashTot>0 ? Math.round(Math.abs(diff)/prevCashTot*100) : 0;
-    var diffColor = diff>=0?'var(--green)':'var(--red)';
-    var diffArrow = diff>=0?'↑':'↓';
-
-    // ── Payment status للشهر ──
     var accrualPaidMap = {};
     accrualPays.forEach(function(p){ accrualPaidMap[p.unit_id]=(accrualPaidMap[p.unit_id]||0)+(p.amount||0); });
+
+    var actualUnpaid = 0, overpaid = 0;
+    allInMonth.forEach(function(u){
+      var eff  = calcEffectiveRent(u, discMap, adjustMap, ym);
+      var paid = accrualPaidMap[u.id] || 0;
+      if(paid < eff) actualUnpaid += eff - paid;
+      if(paid > eff) overpaid     += paid - eff;
+    });
+    var netRemaining = Math.max(0, expected - accrualPaid);
+    var remaining    = netRemaining; // backward compat
+    var pct          = expected>0 ? Math.round(accrualPaid/expected*100) : 0;
+    var diff         = cashRent - prevCashTot;
+    var diffPct      = prevCashTot>0 ? Math.round(Math.abs(diff)/prevCashTot*100) : 0;
+    var diffColor    = diff>=0?'var(--green)':'var(--red)';
+    var diffArrow    = diff>=0?'↑':'↓';
     var paidCount=0, partCount=0, unpaidCount=0;
     allInMonth.forEach(function(u){
       var got  = accrualPaidMap[u.id]||0;
@@ -295,7 +204,8 @@ async function loadSmartDash(ym) {
     if(el('dash-expected-sub')) el('dash-expected-sub').textContent= LANG==='ar'?'إيجار الشهر':'Monthly target';
     if(el('dash-collected'))    el('dash-collected').textContent   = fmt(accrualPaid)+' AED';
     if(el('dash-collected-cmp'))el('dash-collected-cmp').innerHTML = prevCashTot>0?'<span style="color:'+diffColor+'">'+diffArrow+' '+diffPct+'% من الماضي</span>':'';
-    if(el('dash-remaining'))    { el('dash-remaining').textContent=(remaining>0?remaining.toLocaleString():'0')+' AED'; el('dash-remaining').style.color=remaining>0?'var(--red)':'var(--green)'; }
+    if(el('dash-remaining'))    { el('dash-remaining').textContent=(netRemaining>0?netRemaining.toLocaleString():'0')+' AED'; el('dash-remaining').style.color=netRemaining>0?'var(--red)':'var(--green)'; }
+    if(el('dash-remaining-sub')) el('dash-remaining-sub').textContent = LANG==='ar'?'متبقي فعلي: '+(actualUnpaid.toLocaleString())+' | زيادات: '+(overpaid.toLocaleString()):'Unpaid: '+actualUnpaid.toLocaleString()+' | Over: '+overpaid.toLocaleString();
     if(el('dash-expected-pct')) el('dash-expected-pct').textContent= LANG==='ar'?'استحقاق الشهر':'Accrual basis';
 
     // الكاش الصافي
