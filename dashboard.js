@@ -425,7 +425,7 @@ async function loadCollReport(btn) {
     // ── PDF button ──
     // Action buttons
     html += '<div style="display:flex;gap:8px;margin-bottom:14px">'
-      +'<button onclick="exportCollPDF(\''+monYM+'\')" style="flex:1;padding:12px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer">📄 PDF</button>'
+      +'<button onclick="exportCollPDF(\''+monYM+'\')" style="flex:1;padding:12px;background:var(--surf2);border:1.5px solid #ddd;border-radius:12px;color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer">📄 PDF</button>'
       +'<button onclick="goPanel(\'units\');setTimeout(function(){setFilter(\'unpaid\',document.querySelector(\'[data-filter=unpaid]\'));},150);" style="flex:1;padding:12px;background:var(--red)18;border:1.5px solid var(--red)44;border-radius:12px;color:var(--red);font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer">⚠️ غير مدفوعة</button>'
       +'</div>';
 
@@ -1315,14 +1315,14 @@ async function loadDashboardAudit(monYM) {
     var html = '';
 
     // Status Banner
-    html += '<div style="border-radius:10px;padding:14px 16px;margin-bottom:16px;background:'+(passed?'var(--green)':'var(--red)')+'18;border:2px solid '+(passed?'var(--green)':'var(--red)')+'55;display:flex;align-items:center;gap:12px">'
+    html += '<div style="border-radius:10px;padding:14px 16px;margin-bottom:16px;background:'+(passed?'#e8f5e9':'#fdecea')+';border:2px solid '+(passed?'#43a047':'#e53935')+';display:flex;align-items:center;gap:12px">'
       +'<div style="font-size:1.6rem">'+(passed?'🟢':'🔴')+'</div>'
-      +'<div><div style="font-weight:800;font-size:.95rem;color:'+(passed?'var(--green)':'var(--red)')+'">'+( passed?'Audit Passed — كل الأرقام متطابقة':'Audit Failed — '+issues.length+' مشكلة تحتاج مراجعة')+'</div>'
-      +'<div style="font-size:.7rem;color:var(--muted);margin-top:2px">'+monYM+' | Snapshot: '+snap_units.length+' وحدة</div></div>'
+      +'<div><div style="font-weight:800;font-size:.95rem;color:'+(passed?'#2e7d32':'#c62828')+'">'+(passed?'Audit Passed — كل الأرقام متطابقة':'Audit Failed — '+issues.length+' مشكلة تحتاج مراجعة')+'</div>'
+      +'<div style="font-size:.7rem;color:#666;margin-top:2px">'+monYM+' | Snapshot: '+snap_units.length+' وحدة</div></div>'
       +'</div>';
 
     // Section 1: Unit Status Cards
-    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">📋 حالة الوحدات</div>';
+    html += '<div style="font-weight:700;font-size:.8rem;color:#555;margin-bottom:8px;letter-spacing:.05em">📋 حالة الوحدات</div>';
     html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">';
     var cards = [
       {label:'مشغولة', val:occupied,   color:'var(--accent)', key:'occupied'},
@@ -1333,16 +1333,17 @@ async function loadDashboardAudit(monYM) {
       {label:'Snapshot', val:snap_units.length, color:'var(--muted)', key:'snap'}
     ];
     cards.forEach(function(c){
-      html += '<div onclick="window._auditShowDetail(\''+c.key+'\')" style="background:var(--panel2);border:2px solid '+c.color+'66;border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:opacity .2s" onmouseover="this.style.opacity=\'.8\'" onmouseout="this.style.opacity=\'1\'">'
-        +'<div style="font-size:1.5rem;font-weight:800;color:'+c.color+'">'+c.val+'</div>'
-        +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">'+c.label+'</div>'
+      var _hc = c.color.replace('var(--accent)','#1565c0').replace('var(--red)','#c62828').replace('var(--amber)','#e65100').replace('var(--green)','#2e7d32').replace('var(--muted)','#555');
+      html += '<div onclick="window._auditShowDetail(\''+c.key+'\')" style="background:#f8f9fa;border:2px solid '+_hc+'66;border-radius:10px;padding:10px;text-align:center;cursor:pointer">'
+        +'<div style="font-size:1.5rem;font-weight:800;color:'+_hc+'">'+c.val+'</div>'
+        +'<div style="font-size:.65rem;color:#555;margin-top:2px">'+c.label+'</div>'
         +'</div>';
     });
     html += '</div>';
 
     // Section 2: Financial Summary
     html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">💰 التحقق المالي</div>';
-    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    html += '<div style="background:#f8f9fa;border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid #e5e5e5">';
     var finRows = [
       {label:'🎯 الإيجار المستهدف',   val:targetRent.toLocaleString()+' AED',   color:'var(--text2)'},
       {label:'✅ الإيجار المحصّل',     val:collectedRent.toLocaleString()+' AED', color:'var(--green)'},
@@ -1363,7 +1364,7 @@ async function loadDashboardAudit(monYM) {
 
     // Section 3: Consistency Checks
     html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">🔎 فحص التناسق</div>';
-    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    html += '<div style="background:#f8f9fa;border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid #e5e5e5">';
     checks.forEach(function(c){
       html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
         +'<span style="font-size:.85rem">'+(c.ok?'✅':'❌')+'</span>'
@@ -1375,7 +1376,7 @@ async function loadDashboardAudit(monYM) {
     // Section 4: Issues (if any)
     if(issues.length) {
       html += '<div style="font-weight:700;font-size:.8rem;color:var(--red);margin-bottom:8px;letter-spacing:.05em">⚠️ المشاكل المكتشفة</div>';
-      html += '<div style="background:var(--red)08;border:1px solid var(--red)33;border-radius:10px;padding:12px;margin-bottom:16px">';
+      html += '<div style="background:#fff5f5;border:1px solid #ffcdd2;border-radius:10px;padding:12px;margin-bottom:16px">';
       issues.forEach(function(iss){
         html += '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--red)22">'
           +'<span>⚠️</span><span style="font-size:.73rem;color:var(--red)">'+esc(iss)+'</span></div>';
@@ -1414,7 +1415,7 @@ async function loadDashboardAudit(monYM) {
     var uiChecksErr = uiChecks.filter(function(c){ return c.status==='err'; }).length;
 
     html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">🔗 مقارنة UI (التقارير المفتوحة)</div>';
-    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    html += '<div style="background:#f8f9fa;border-radius:10px;padding:12px;margin-bottom:16px;border:1px solid #e5e5e5">';
     if(uiChecksSkipped === uiChecks.length) {
       html += '<div style="color:var(--muted);font-size:.73rem;text-align:center;padding:6px">افتح التقارير أولاً ثم أعد تدقيق الشهر للمقارنة</div>';
     } else {
@@ -1454,16 +1455,44 @@ async function loadDashboardAudit(monYM) {
     if(modal) modal.remove();
     modal = document.createElement('div');
     modal.id = 'dashAuditModal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0009;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
-    modal.innerHTML = '<div style="background:var(--panel);border-radius:14px;width:100%;max-width:680px;padding:18px;position:relative">'
-      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
-      +'<div style="font-weight:800;font-size:1rem">🔍 تدقيق الشهر — '+monYM+'</div>'
-      +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.8rem">✕</button>'
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);display:flex;align-items:flex-start;justify-content:center;padding:12px;overflow-y:auto';
+
+    // Close on overlay click
+    modal.addEventListener('click', function(e){ if(e.target === modal) modal.remove(); });
+    // Close on ESC
+    var _escHandler = function(e){ if(e.key==='Escape'){ modal.remove(); document.removeEventListener('keydown',_escHandler); } };
+    document.addEventListener('keydown', _escHandler);
+
+    modal.innerHTML =
+      '<div style="background:#fff;color:#111;border-radius:16px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.35)">'
+      // Sticky header
+      +'<div id="dashAuditHeader" style="position:sticky;top:0;z-index:10;background:#fff;border-bottom:2px solid #e5e5e5;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-radius:16px 16px 0 0">'
+        +'<div style="font-weight:800;font-size:.95rem;color:#111">🔍 تدقيق الشهر — '+monYM+'</div>'
+        +'<div style="display:flex;gap:6px">'
+          +'<button onclick="window._auditPrint()" style="background:#f5f5f5;border:1px solid #ddd;color:#333;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.75rem;font-weight:700">🖨️ طباعة</button>'
+          +'<button onclick="window._auditExportPDF()" style="background:#f5f5f5;border:1px solid #ddd;color:#333;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.75rem;font-weight:700">📄 PDF</button>'
+          +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:#fff;border:2px solid #111;color:#111;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:.8rem;font-weight:800">✕ إغلاق</button>'
+        +'</div>'
       +'</div>'
-      +'<div id="dashAuditContent"></div>'
+      +'<div id="dashAuditContent" style="padding:16px;direction:rtl"></div>'
       +'</div>';
+
     document.body.appendChild(modal);
     document.getElementById('dashAuditContent').innerHTML = html;
+
+    // ── Print / PDF ──
+    window._auditPrint = function(){
+      var content = document.getElementById('dashAuditContent');
+      if(!content) return;
+      var w = window.open('','_blank','width=900,height=700');
+      w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>تدقيق الشهر — '+monYM+'</title>'
+        +'<style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;color:#111;background:#fff}table{width:100%;border-collapse:collapse}th,td{padding:6px 10px;border:1px solid #ccc;text-align:right}th{background:#f0f0f0;font-weight:700}@media print{button{display:none}}</style>'
+        +'</head><body>'+content.innerHTML+'</body></html>');
+      w.document.close();
+      w.focus();
+      setTimeout(function(){ w.print(); }, 400);
+    };
+    window._auditExportPDF = function(){ window._auditPrint(); };
 
     // ── Detail loader (lazy) ──
     var _auditData = audit;
@@ -1490,7 +1519,7 @@ async function loadDashboardAudit(monYM) {
 
       // Ledger — lazy load from Supabase
       if(key === 'ledger') {
-        area.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:.75rem"><span class="spin"></span> جاري تحميل دفتر الشهر...</div>';
+        area.innerHTML = '<div style="text-align:center;color:#666;padding:16px;font-size:.75rem"><span class="spin"></span> جاري تحميل دفتر الشهر...</div>';
         Promise.all([
           sb.from('rent_payments').select('unit_id,apartment,room,tenant_name,amount,payment_date,payment_month,payment_method,notes').like('payment_month', monYM+'%'),
           sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,deposit_received_date,status').gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',window.monthEnd(monYM)),
@@ -1504,54 +1533,83 @@ async function loadDashboardAudit(monYM) {
           var totRef=ledgerRefunds.reduce(function(s,r){ return s+(Number(r.refund_amount)||0); },0);
           var totExp=ledgerExp.reduce(function(s,r){ return s+(r.amount||0); },0);
           var totOwn=ledgerOwner.reduce(function(s,r){ return s+(r.amount||0); },0);
-          var ledgerNet=totPays+totDeps-totRef-totExp-totOwn;
-
-          var lhtml = '<div style="border:1.5px solid var(--amber)44;border-radius:10px;overflow:hidden">'
-            +'<div style="background:var(--amber)18;padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between">'
-            +'<span>📒 دفتر الشهر — '+monYM+'</span>'
-            +'<span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:var(--muted)">✕</span>'
-            +'</div>'
-            // Ledger Summary
-            +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;background:var(--panel2)">';
-          [{l:'إيجار مستهدف',v:targetRent,c:'var(--text2)'},{l:'محصّل',v:totPays,c:'var(--green)'},{l:'تأمينات',v:totDeps,c:'var(--accent)'},{l:'مرتجعات',v:totRef,c:'var(--red)'},{l:'مصاريف',v:totExp,c:'var(--amber)'},{l:'صافي',v:ledgerNet,c:ledgerNet>=0?'var(--green)':'var(--red)'}].forEach(function(item){
-            lhtml+='<div style="text-align:center;background:var(--panel);border-radius:8px;padding:7px"><div style="font-size:.9rem;font-weight:800;color:'+item.c+'">'+item.v.toLocaleString()+'</div><div style="font-size:.6rem;color:var(--muted)">'+item.l+'</div></div>';
+          var cashTotalL=totPays+totDeps;
+          var ledgerNet=cashTotalL-totRef-totExp-totOwn;
+          var S=function(n){ return Number(n||0).toLocaleString(); };
+          function getFloor(apt){ return Math.floor(Number(apt)/100); }
+          // floors
+          var floors={};
+          function getF(f){ if(!floors[f]) floors[f]={target:0,collected:0,deps:0,refunds:0}; return floors[f]; }
+          snap_units.forEach(function(u){ getF(getFloor(u.apartment)).target+=calcEffectiveRent(u,discMap,adjustMap,monYM); });
+          ledgerPays.forEach(function(p){ getF(getFloor(p.apartment)).collected+=(p.amount||0); });
+          ledgerDeps.forEach(function(d){ getF(getFloor(d.apartment)).deps+=(d.amount||0); });
+          ledgerRefunds.forEach(function(d){ getF(getFloor(d.apartment)).refunds+=(Number(d.refund_amount)||0); });
+          var floorNums=Object.keys(floors).map(Number).sort(function(a,b){return a-b;});
+          // new by floor
+          var newByFloor={};
+          (_auditData.newTenantRows||[]).forEach(function(r){ var f=getFloor(r.apartment); if(!newByFloor[f]) newByFloor[f]={count:0,rent:0,deps:0}; newByFloor[f].count++; newByFloor[f].rent+=(r.monthlyRent||0); newByFloor[f].deps+=(r.depositPaid||0); });
+          // leavers by floor
+          var leaveByFloor={};
+          (_auditData.endOfMonthLeaverRows||[]).forEach(function(r){ var f=getFloor(r.apartment); if(!leaveByFloor[f]) leaveByFloor[f]={count:0,rent:0}; leaveByFloor[f].count++; leaveByFloor[f].rent+=(r.rent||0); });
+          var th=function(t){ return '<th style="padding:6px 10px;background:#1a3a6a;color:#fff;text-align:right;font-size:.72rem">'+t+'</th>'; };
+          var td=function(v,b){ return '<td style="padding:6px 10px;border:1px solid #ddd;font-size:.73rem'+(b?';font-weight:800':'')+'">'+String(v===null||v===undefined?'—':v)+'</td>'; };
+          var lhtml='<div id="ledgerContent" style="background:#fff;color:#111;direction:rtl">'
+            +'<div style="text-align:center;padding:10px 0 6px;border-bottom:3px solid #1a3a6a;margin-bottom:12px"><div style="font-size:1.1rem;font-weight:800;color:#1a3a6a">📒 دفتر الشهر — '+monYM+'</div></div>'
+            +'<div style="background:#f0f4ff;border:1px solid #c5cae9;border-radius:10px;padding:12px;margin-bottom:14px">'
+              +'<div style="font-weight:700;font-size:.8rem;color:#1a3a6a;margin-bottom:8px">📊 ملخص عام</div>'
+              +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+          [{l:'💵 إجمالي الكاش',v:cashTotalL,c:'#1a7a4a'},{l:'✅ إيجار محصّل',v:totPays,c:'#2e7d32'},{l:'🔒 تأمينات مستلمة',v:totDeps,c:'#1565c0'},{l:'↩️ تأمينات مرتجعة',v:totRef,c:'#c62828'},{l:'💸 المصاريف',v:totExp,c:'#e65100'},{l:'👤 دُفع للمالك',v:totOwn,c:'#555'},{l:'🎯 إيجار مستهدف',v:targetRent,c:'#333'},{l:'🏦 الصافي',v:ledgerNet,c:ledgerNet>=0?'#2e7d32':'#c62828'}].forEach(function(item){
+            lhtml+='<div style="background:#fff;border-radius:8px;padding:8px;display:flex;justify-content:space-between;align-items:center;border:1px solid #e0e0e0"><span style="font-size:.72rem;color:#555">'+item.l+'</span><span style="font-size:.82rem;font-weight:800;color:'+item.c+'">'+S(item.v)+' AED</span></div>';
           });
-          lhtml += '</div>';
-
-          function ledgerTable(rows, cols, emptyMsg) {
-            if(!rows.length) return '<div style="color:var(--muted);font-size:.72rem;padding:8px;text-align:center">'+emptyMsg+'</div>';
-            var t='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.7rem"><thead><tr style="background:var(--panel2)">'
-              +cols.map(function(c){ return '<th style="padding:4px 6px;text-align:right">'+c.label+'</th>'; }).join('')+'</tr></thead><tbody>';
-            rows.forEach(function(r){ t+='<tr style="border-bottom:1px solid var(--border)">'+cols.map(function(c){ return '<td style="padding:4px 6px">'+esc2(String(r[c.key]===null||r[c.key]===undefined?'—':r[c.key]))+'</td>'; }).join('')+'</tr>'; });
-            return t+'</tbody></table></div>';
+          lhtml+='</div></div>';
+          // floors table
+          lhtml+='<div style="font-weight:700;font-size:.8rem;color:#1a3a6a;margin-bottom:6px">🏢 ملخص الأدوار</div>'
+            +'<div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse"><thead><tr>'+th('الدور')+th('مستهدف')+th('محصّل')+th('متبقي')+th('تأمينات')+th('مرتجعات')+th('الصافي')+'</tr></thead><tbody>';
+          var tot={t:0,c:0,d:0,r:0};
+          floorNums.forEach(function(f){ var fl=floors[f]; var rem=fl.target-fl.collected; var net=fl.collected+fl.deps-fl.refunds; tot.t+=fl.target;tot.c+=fl.collected;tot.d+=fl.deps;tot.r+=fl.refunds;
+            lhtml+='<tr style="background:'+(f%2?'#f9f9f9':'#fff')+'">'+td('الدور '+f,true)+td(S(fl.target))+td(S(fl.collected))+'<td style="padding:6px 10px;border:1px solid #ddd;font-size:.73rem;color:'+(rem>0?'#c62828':'#2e7d32')+'">'+S(rem)+'</td>'+td(S(fl.deps))+td(S(fl.refunds))+'<td style="padding:6px 10px;border:1px solid #ddd;font-size:.73rem;font-weight:700;color:'+(net>=0?'#2e7d32':'#c62828')+'">'+S(net)+'</td></tr>';
+          });
+          lhtml+='<tr style="background:#1a3a6a;color:#fff;font-weight:800"><td style="padding:6px 10px;font-size:.73rem">الإجمالي</td><td style="padding:6px 10px;font-size:.73px">'+S(tot.t)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.c)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.t-tot.c)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.d)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.r)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.c+tot.d-tot.r)+'</td></tr></tbody></table></div>';
+          // new tenants
+          var nf=Object.keys(newByFloor).map(Number).sort(function(a,b){return a-b;});
+          if(nf.length){ var nt={count:0,rent:0,deps:0};
+            lhtml+='<div style="font-weight:700;font-size:.8rem;color:#2e7d32;margin-bottom:6px">🆕 المستأجرون الجدد</div><div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse"><thead><tr>'+th('الدور')+th('عدد الجدد')+th('الإيجار')+th('التأمينات')+'</tr></thead><tbody>';
+            nf.forEach(function(f){ var n=newByFloor[f]; nt.count+=n.count;nt.rent+=n.rent;nt.deps+=n.deps; lhtml+='<tr style="background:'+(f%2?'#f9f9f9':'#fff')+'">'+td('الدور '+f,true)+td(n.count)+td(S(n.rent))+td(S(n.deps))+'</tr>'; });
+            lhtml+='<tr style="background:#1a3a6a;color:#fff;font-weight:800"><td style="padding:6px 10px;font-size:.73rem">الإجمالي</td><td style="padding:6px 10px;font-size:.73rem">'+nt.count+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(nt.rent)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(nt.deps)+'</td></tr></tbody></table></div>';
           }
-
-          var sections = [
-            {title:'🎯 إيجار مستهدف (Snapshot)', total:targetRent, rows:snap_units, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار الفعلي',key:'monthly_rent'}], empty:'لا يوجد'},
-            {title:'✅ إيجار محصّل', total:totPays, rows:ledgerPays, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الدفع',key:'payment_date'},{label:'شهر الدفع',key:'payment_month'},{label:'الطريقة',key:'payment_method'}], empty:'لا توجد دفعات'},
-            {title:'🔒 تأمينات محصّلة', total:totDeps, rows:ledgerDeps, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الاستلام',key:'deposit_received_date'},{label:'الحالة',key:'status'}], empty:'لا توجد تأمينات'},
-            {title:'↩️ تأمينات مُرتجعة', total:totRef, rows:ledgerRefunds, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'مبلغ الإرجاع',key:'refund_amount'},{label:'تاريخ الإرجاع',key:'refund_date'},{label:'الأصل',key:'amount'}], empty:'لا توجد مرتجعات'},
-            {title:'💸 المصاريف', total:totExp, rows:ledgerExp, cols:[{label:'الفئة',key:'category'},{label:'الوصف',key:'description'},{label:'المبلغ',key:'amount'}], empty:'لا توجد مصاريف'},
-            {title:'👤 دُفع للمالك', total:totOwn, rows:ledgerOwner, cols:[{label:'المبلغ',key:'amount'},{label:'الشهر',key:'period_month'},{label:'الطريقة',key:'method'}], empty:'لا توجد مدفوعات'}
-          ];
-
-          sections.forEach(function(sec){
-            lhtml += '<div style="border-top:1px solid var(--border)">'
-              +'<div style="padding:7px 10px;background:var(--panel2);font-weight:700;font-size:.73rem;display:flex;justify-content:space-between">'
-              +'<span>'+sec.title+'</span><span style="color:var(--accent)">'+sec.total.toLocaleString()+' AED</span></div>'
-              +ledgerTable(sec.rows, sec.cols, sec.empty)+'</div>';
+          // leavers
+          var lf=Object.keys(leaveByFloor).map(Number).sort(function(a,b){return a-b;});
+          if(lf.length){ var lt={count:0,rent:0};
+            lhtml+='<div style="font-weight:700;font-size:.8rem;color:#e65100;margin-bottom:6px">🚪 المغادرون آخر الشهر</div><div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse"><thead><tr>'+th('الدور')+th('عدد المغادرين')+th('الإيجار الخارج')+'</tr></thead><tbody>';
+            lf.forEach(function(f){ var l=leaveByFloor[f]; lt.count+=l.count;lt.rent+=l.rent; lhtml+='<tr style="background:'+(f%2?'#f9f9f9':'#fff')+'">'+td('الدور '+f,true)+td(l.count)+td(S(l.rent))+'</tr>'; });
+            lhtml+='<tr style="background:#1a3a6a;color:#fff;font-weight:800"><td style="padding:6px 10px;font-size:.73rem">الإجمالي</td><td style="padding:6px 10px;font-size:.73rem">'+lt.count+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(lt.rent)+'</td></tr></tbody></table></div>';
+          }
+          // detail buttons
+          lhtml+='<div style="font-weight:700;font-size:.8rem;color:#555;margin-bottom:8px">📂 التفاصيل (عند الطلب)</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">';
+          [{k:'pays',l:'💳 إيجار محصّل'},{k:'deps',l:'🔒 تأمينات'},{k:'refs',l:'↩️ مرتجعات'},{k:'exps',l:'💸 مصاريف'},{k:'own',l:'👤 دفع المالك'},{k:'target',l:'🎯 مستهدف (Snapshot)'}].forEach(function(b){
+            lhtml+='<button onclick="window._ledgerDetail(\''+b.k+'\')" style="background:#f8f9fa;border:2px solid #1a3a6a44;border-radius:8px;padding:7px;font-size:.72rem;font-weight:700;color:#1a3a6a;cursor:pointer">'+b.l+'</button>';
           });
-          lhtml += '</div>';
-          area.innerHTML = lhtml;
+          lhtml+='</div><div id="ledgerDetailArea"></div></div>';
+          area.innerHTML='<div style="border:2px solid #e0c860;border-radius:10px;overflow:hidden"><div style="background:#f9f5e0;padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between;align-items:center"><span style="color:#7a6000">📒 دفتر الشهر — '+monYM+'</span><div style="display:flex;gap:6px"><button onclick="window._auditLedgerPrint()" style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:3px 10px;font-size:.7rem;cursor:pointer">🖨️ طباعة</button><span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:#999;font-weight:700;padding:2px 8px">✕</span></div></div><div style="padding:12px">'+lhtml+'</div></div>';
+          // ledger detail
+          window._ledgerDetailData={
+            pays:{rows:ledgerPays,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الدفع',key:'payment_date'},{label:'الطريقة',key:'payment_method'}]},
+            deps:{rows:ledgerDeps,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'التاريخ',key:'deposit_received_date'}]},
+            refs:{rows:ledgerRefunds,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المُرتجع',key:'refund_amount'},{label:'تاريخ الإرجاع',key:'refund_date'}]},
+            exps:{rows:ledgerExp,cols:[{label:'الفئة',key:'category'},{label:'الوصف',key:'description'},{label:'المبلغ',key:'amount'}]},
+            own:{rows:ledgerOwner,cols:[{label:'المبلغ',key:'amount'},{label:'الشهر',key:'period_month'},{label:'الطريقة',key:'method'}]},
+            target:{rows:snap_units,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]}
+          };
+          window._ledgerDetail=function(key){ var d=window._ledgerDetailData[key]; if(!d) return; var t='<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#1a3a6a">'+d.cols.map(function(c){ return '<th style="padding:5px 8px;color:#fff;text-align:right;font-size:.7rem">'+c.label+'</th>'; }).join('')+'</tr></thead><tbody>'; d.rows.forEach(function(r,i){ t+='<tr style="background:'+(i%2?'#f9f9f9':'#fff')+'">'+d.cols.map(function(c){ return '<td style="padding:5px 8px;border:1px solid #eee;font-size:.7rem">'+esc2(String(r[c.key]===null||r[c.key]===undefined?'—':r[c.key]))+'</td>'; }).join('')+'</tr>'; }); t+='</tbody></table></div>'; document.getElementById('ledgerDetailArea').innerHTML=t; };
+          window._auditLedgerPrint=function(){ var c=document.getElementById('ledgerContent'); if(!c) return; var w=window.open('','_blank','width=900,height=700'); w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>دفتر الشهر — '+monYM+'</title><style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;color:#111;background:#fff}table{width:100%;border-collapse:collapse}th{background:#1a3a6a;color:#fff;padding:6px 10px;text-align:right;font-size:11px}td{padding:6px 10px;border:1px solid #ddd;font-size:11px}@media print{button,span[onclick]{display:none}}</style></head><body>'+c.innerHTML+'</body></html>'); w.document.close(); w.focus(); setTimeout(function(){ w.print(); },400); };
           area.scrollIntoView({behavior:'smooth',block:'nearest'});
-        }).catch(function(e){
-          area.innerHTML = '<div style="color:var(--red);padding:10px;font-size:.75rem">خطأ في تحميل الدفتر: '+e.message+'</div>';
-        });
+        }).catch(function(e){ area.innerHTML='<div style="color:#c62828;padding:10px;font-size:.75rem">خطأ: '+e.message+'</div>'; });
         return;
+
       }
       var cfg = configs[key];
       if(!cfg) return;
-      area.innerHTML = '<div style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-top:4px">'
+      area.innerHTML = '<div style="border:1.5px solid #ddd;border-radius:10px;overflow:hidden;margin-top:4px">'
         +'<div style="background:var(--panel2);padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between">'
         +'<span>'+cfg.title+' ('+cfg.rows.length+')</span>'
         +'<span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:var(--muted)">✕</span>'
