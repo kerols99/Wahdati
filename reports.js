@@ -2749,7 +2749,7 @@ async function loadNewTenantsReport(btn) {
         String(x.apartment || ''),
         String(x.room || ''),
         String(x.tenant_name || x.tenant || '').trim().toLowerCase(),
-        String(x.start_date || x.startDate || '').slice(0,10)
+        String(x.start_date || x.startDate || x.new_start_date || '').slice(0,10)
       ].join('|');
     }
     var seenNewTenantKeys = new Set();
