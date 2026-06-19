@@ -1296,15 +1296,15 @@ async function loadDashboardAudit(monYM) {
       issues.push('إيجار محصّل ('+collectedRent.toLocaleString()+') يتجاوز المستهدف ('+targetRent.toLocaleString()+') بكثير');
     }
 
-    // 4. المغادرون مش موجودين في المشغولين؟
-    var leavingApts = new Set(audit.endOfMonthLeaverRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); }));
-    var occupiedApts = new Set(audit.occupiedDuringMonthRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); }));
-    var leavingInOccupied = [...leavingApts].filter(function(k){ return occupiedApts.has(k); }).length;
-    if(leavingInOccupied === 0) {
-      checks.push({ok:true, label:'المغادرون نهاية الشهر لا يتداخلون مع المشغولين'});
+    // 4. المغادرون آخر الشهر لازم يكونوا كانوا مشغولين خلاله؟
+    var leavingApts = audit.endOfMonthLeaverRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); });
+    var occupiedSet = new Set(audit.occupiedDuringMonthRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); }));
+    var leavingNotInOccupied = leavingApts.filter(function(k){ return !occupiedSet.has(k); });
+    if(leavingNotInOccupied.length === 0) {
+      checks.push({ok:true, label:'المغادرون آخر الشهر ('+leaving+') كلهم موجودون في Snapshot الشهر'});
     } else {
-      checks.push({ok:false, label:leavingInOccupied+' وحدة مغادِرة محسوبة أيضاً كمشغولة'});
-      issues.push(leavingInOccupied+' وحدة مغادِرة تظهر في قائمة المشغولين — تحقق من end_date');
+      checks.push({ok:false, label:leavingNotInOccupied.length+' وحدة مغادِرة غير موجودة في Snapshot — تحقق من end_date أو start_date'});
+      issues.push(leavingNotInOccupied.length+' وحدة مغادِرة لم تُحسب ضمن مشغولي الشهر: '+leavingNotInOccupied.slice(0,3).join(', '));
     }
 
     // ── Audit Status ──
@@ -1333,7 +1333,7 @@ async function loadDashboardAudit(monYM) {
       {label:'Snapshot', val:snap_units.length, color:'var(--muted)', key:'snap'}
     ];
     cards.forEach(function(c){
-      html += '<div onclick="window._auditShowDetail(\''+c.key+'\')" style="background:'+c.color+'12;border:1.5px solid '+c.color+'44;border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:opacity .2s" onmouseover="this.style.opacity=\'.8\'" onmouseout="this.style.opacity=\'1\'">'
+      html += '<div onclick="window._auditShowDetail(\''+c.key+'\')" style="background:var(--panel2);border:2px solid '+c.color+'66;border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:opacity .2s" onmouseover="this.style.opacity=\'.8\'" onmouseout="this.style.opacity=\'1\'">'
         +'<div style="font-size:1.5rem;font-weight:800;color:'+c.color+'">'+c.val+'</div>'
         +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">'+c.label+'</div>'
         +'</div>';
@@ -1383,7 +1383,53 @@ async function loadDashboardAudit(monYM) {
       html += '</div>';
     }
 
-    // Section 5: Detail Buttons
+    // Section 4b: UI Cross-Check (compare audit with loaded report results)
+    var uiChecks = [];
+    function uiCrossCheck(winResults, winMonth, auditRows, reportName, keyFn) {
+      if(!window[winResults] || window[winMonth] !== monYM) {
+        uiChecks.push({status:'skip', label:reportName+' — لم يُفتح بعد لهذا الشهر'});
+        return;
+      }
+      var uiRows  = window[winResults];
+      var auditSet = new Set(auditRows.map(keyFn));
+      var uiSet    = new Set(uiRows.map(keyFn));
+      var missingInUI  = auditRows.filter(function(r){ return !uiSet.has(keyFn(r)); });
+      var extraInUI    = uiRows.filter(function(r){ return !auditSet.has(keyFn(r)); });
+      if(missingInUI.length === 0 && extraInUI.length === 0) {
+        uiChecks.push({status:'ok', label:reportName+' — متطابق مع Audit ('+auditRows.length+')'});
+      } else {
+        var msg = reportName+': Audit='+auditRows.length+' | UI='+uiRows.length;
+        if(missingInUI.length) msg += ' | ناقص في UI: '+missingInUI.slice(0,3).map(function(r){ return r.apartment+'/'+r.room+(r.tenant||r.lastTenant?(' '+(r.tenant||r.lastTenant)):''); }).join(', ');
+        if(extraInUI.length)   msg += ' | زيادة في UI: '+extraInUI.slice(0,3).map(function(r){ return r.apartment+'/'+r.room+(r.tenant||r.lastTenant?(' '+(r.tenant||r.lastTenant)):''); }).join(', ');
+        uiChecks.push({status:'err', label:msg});
+      }
+    }
+    uiCrossCheck('_newTenantsResults',       '_newTenantsMonth',       audit.newTenantRows,        '👥 الجدد',             function(r){ return String(r.apartment)+'|'+String(r.room)+'|'+(r.tenant||r.tenant_name||'').toLowerCase()+'|'+(r.startDate||r.start_date||'').slice(0,10); });
+    uiCrossCheck('_vacantActualResults',     '_vacantActualMonth',     audit.vacantActualRows,     '🏚️ الشاغر الفعلي',    function(r){ return String(r.apartment)+'|'+String(r.room)+'|'+(r.lastTenant||'').toLowerCase()+'|'+(r.vacantFrom||'').slice(0,10); });
+    uiCrossCheck('_endOfMonthResults',       '_endOfMonthMonth',       audit.endOfMonthLeaverRows, '📤 خروج آخر الشهر',   function(r){ return String(r.apartment)+'|'+String(r.room)+'|'+(r.tenant||'').toLowerCase()+'|'+(r.endDate||'').slice(0,10); });
+    uiCrossCheck('_internalTransfersResults','_internalTransfersMonth',audit.internalTransferRows, '🔄 النقل الداخلي',    function(r){ return (r.tenant||'').toLowerCase()+'|'+String(r.fromApt||r.fromApartment||'')+'|'+String(r.fromRoom||'')+'|'+(r.transferDate||'').slice(0,10); });
+
+    var uiChecksPassed = uiChecks.filter(function(c){ return c.status==='ok'; }).length;
+    var uiChecksSkipped = uiChecks.filter(function(c){ return c.status==='skip'; }).length;
+    var uiChecksErr = uiChecks.filter(function(c){ return c.status==='err'; }).length;
+
+    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">🔗 مقارنة UI (التقارير المفتوحة)</div>';
+    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    if(uiChecksSkipped === uiChecks.length) {
+      html += '<div style="color:var(--muted);font-size:.73rem;text-align:center;padding:6px">افتح التقارير أولاً ثم أعد تدقيق الشهر للمقارنة</div>';
+    } else {
+      uiChecks.forEach(function(c){
+        var icon = c.status==='ok'?'✅':c.status==='skip'?'⏭️':'❌';
+        var color = c.status==='ok'?'var(--text2)':c.status==='skip'?'var(--muted)':'var(--red)';
+        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
+          +'<span style="font-size:.85rem">'+icon+'</span>'
+          +'<span style="font-size:.72rem;color:'+color+'">'+esc(c.label)+'</span>'
+          +'</div>';
+      });
+    }
+    html += '</div>';
+
+    // Section 5: Detail Buttons + Ledger
     html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">📂 التفاصيل (عند الطلب)</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">';
     var detailBtns = [
@@ -1392,15 +1438,16 @@ async function loadDashboardAudit(monYM) {
       {key:'transfers', label:'🔄 النقل الداخلي',           color:'var(--accent)'},
       {key:'new',       label:'👥 المستأجرين الجدد',        color:'var(--green)'},
       {key:'occupied',  label:'🏢 المشغولون خلال الشهر',   color:'var(--accent)'},
-      {key:'snap',      label:'📊 Snapshot التفاصيل',       color:'var(--muted)'}
+      {key:'ledger',    label:'📒 دفتر الشهر (Ledger)',     color:'var(--amber)'}
     ];
     detailBtns.forEach(function(b){
-      html += '<button onclick="window._auditShowDetail(\''+b.key+'\')" style="background:'+b.color+'12;border:1.5px solid '+b.color+'44;border-radius:8px;padding:8px;font-size:.73rem;font-weight:700;color:'+b.color+';cursor:pointer">'+b.label+'</button>';
+      html += '<button onclick="window._auditShowDetail(\''+b.key+'\')" style="background:var(--panel2);border:2px solid '+b.color+'66;border-radius:8px;padding:8px;font-size:.73rem;font-weight:700;color:'+b.color+';cursor:pointer">'+b.label+'</button>';
     });
     html += '</div>';
 
     // Detail area (lazy loaded)
     html += '<div id="auditDetailArea" style="margin-top:12px"></div>';
+
 
     // ── Show Modal ──
     var modal = document.getElementById('dashAuditModal');
@@ -1440,6 +1487,68 @@ async function loadDashboardAudit(monYM) {
         occupied:  {title:'🏢 المشغولون خلال الشهر',   rows:_auditData.occupiedDuringMonthRows, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]},
         snap:      {title:'📊 Snapshot التفاصيل',       rows:snap_units,                         cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]}
       };
+
+      // Ledger — lazy load from Supabase
+      if(key === 'ledger') {
+        area.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px;font-size:.75rem"><span class="spin"></span> جاري تحميل دفتر الشهر...</div>';
+        Promise.all([
+          sb.from('rent_payments').select('unit_id,apartment,room,tenant_name,amount,payment_date,payment_month,payment_method,notes').like('payment_month', monYM+'%'),
+          sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,deposit_received_date,status').gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',window.monthEnd(monYM)),
+          sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,refund_amount,refund_date,status').gt('refund_amount',0).gte('refund_date',monYM+'-01').lte('refund_date',window.monthEnd(monYM)),
+          sb.from('expenses').select('category,description,amount,period_month').eq('period_month',monYM+'-01'),
+          sb.from('owner_payments').select('amount,period_month,method').eq('period_month',monYM+'-01')
+        ]).then(function(results){
+          var ledgerPays=results[0].data||[], ledgerDeps=results[1].data||[], ledgerRefunds=results[2].data||[], ledgerExp=results[3].data||[], ledgerOwner=results[4].data||[];
+          var totPays=ledgerPays.reduce(function(s,r){ return s+(r.amount||0); },0);
+          var totDeps=ledgerDeps.reduce(function(s,r){ return s+(r.amount||0); },0);
+          var totRef=ledgerRefunds.reduce(function(s,r){ return s+(Number(r.refund_amount)||0); },0);
+          var totExp=ledgerExp.reduce(function(s,r){ return s+(r.amount||0); },0);
+          var totOwn=ledgerOwner.reduce(function(s,r){ return s+(r.amount||0); },0);
+          var ledgerNet=totPays+totDeps-totRef-totExp-totOwn;
+
+          var lhtml = '<div style="border:1.5px solid var(--amber)44;border-radius:10px;overflow:hidden">'
+            +'<div style="background:var(--amber)18;padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between">'
+            +'<span>📒 دفتر الشهر — '+monYM+'</span>'
+            +'<span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:var(--muted)">✕</span>'
+            +'</div>'
+            // Ledger Summary
+            +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px;background:var(--panel2)">';
+          [{l:'إيجار مستهدف',v:targetRent,c:'var(--text2)'},{l:'محصّل',v:totPays,c:'var(--green)'},{l:'تأمينات',v:totDeps,c:'var(--accent)'},{l:'مرتجعات',v:totRef,c:'var(--red)'},{l:'مصاريف',v:totExp,c:'var(--amber)'},{l:'صافي',v:ledgerNet,c:ledgerNet>=0?'var(--green)':'var(--red)'}].forEach(function(item){
+            lhtml+='<div style="text-align:center;background:var(--panel);border-radius:8px;padding:7px"><div style="font-size:.9rem;font-weight:800;color:'+item.c+'">'+item.v.toLocaleString()+'</div><div style="font-size:.6rem;color:var(--muted)">'+item.l+'</div></div>';
+          });
+          lhtml += '</div>';
+
+          function ledgerTable(rows, cols, emptyMsg) {
+            if(!rows.length) return '<div style="color:var(--muted);font-size:.72rem;padding:8px;text-align:center">'+emptyMsg+'</div>';
+            var t='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.7rem"><thead><tr style="background:var(--panel2)">'
+              +cols.map(function(c){ return '<th style="padding:4px 6px;text-align:right">'+c.label+'</th>'; }).join('')+'</tr></thead><tbody>';
+            rows.forEach(function(r){ t+='<tr style="border-bottom:1px solid var(--border)">'+cols.map(function(c){ return '<td style="padding:4px 6px">'+esc2(String(r[c.key]===null||r[c.key]===undefined?'—':r[c.key]))+'</td>'; }).join('')+'</tr>'; });
+            return t+'</tbody></table></div>';
+          }
+
+          var sections = [
+            {title:'🎯 إيجار مستهدف (Snapshot)', total:targetRent, rows:snap_units, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار الفعلي',key:'monthly_rent'}], empty:'لا يوجد'},
+            {title:'✅ إيجار محصّل', total:totPays, rows:ledgerPays, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الدفع',key:'payment_date'},{label:'شهر الدفع',key:'payment_month'},{label:'الطريقة',key:'payment_method'}], empty:'لا توجد دفعات'},
+            {title:'🔒 تأمينات محصّلة', total:totDeps, rows:ledgerDeps, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الاستلام',key:'deposit_received_date'},{label:'الحالة',key:'status'}], empty:'لا توجد تأمينات'},
+            {title:'↩️ تأمينات مُرتجعة', total:totRef, rows:ledgerRefunds, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'مبلغ الإرجاع',key:'refund_amount'},{label:'تاريخ الإرجاع',key:'refund_date'},{label:'الأصل',key:'amount'}], empty:'لا توجد مرتجعات'},
+            {title:'💸 المصاريف', total:totExp, rows:ledgerExp, cols:[{label:'الفئة',key:'category'},{label:'الوصف',key:'description'},{label:'المبلغ',key:'amount'}], empty:'لا توجد مصاريف'},
+            {title:'👤 دُفع للمالك', total:totOwn, rows:ledgerOwner, cols:[{label:'المبلغ',key:'amount'},{label:'الشهر',key:'period_month'},{label:'الطريقة',key:'method'}], empty:'لا توجد مدفوعات'}
+          ];
+
+          sections.forEach(function(sec){
+            lhtml += '<div style="border-top:1px solid var(--border)">'
+              +'<div style="padding:7px 10px;background:var(--panel2);font-weight:700;font-size:.73rem;display:flex;justify-content:space-between">'
+              +'<span>'+sec.title+'</span><span style="color:var(--accent)">'+sec.total.toLocaleString()+' AED</span></div>'
+              +ledgerTable(sec.rows, sec.cols, sec.empty)+'</div>';
+          });
+          lhtml += '</div>';
+          area.innerHTML = lhtml;
+          area.scrollIntoView({behavior:'smooth',block:'nearest'});
+        }).catch(function(e){
+          area.innerHTML = '<div style="color:var(--red);padding:10px;font-size:.75rem">خطأ في تحميل الدفتر: '+e.message+'</div>';
+        });
+        return;
+      }
       var cfg = configs[key];
       if(!cfg) return;
       area.innerHTML = '<div style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-top:4px">'
