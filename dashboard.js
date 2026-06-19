@@ -1214,81 +1214,242 @@ async function loadDashboardAudit(monYM) {
   if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
 
   try {
-    var audit = await buildMonthAudit(monYM);
-    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+    // ── جلب البيانات ──
+    var [audit, snap, paysRes, depsRes, refDepsRes, expRes, ownerRes] = await Promise.all([
+      buildMonthAudit(monYM),
+      buildMonthSnapshot(monYM),
+      sb.from('rent_payments').select('unit_id,amount').like('payment_month', monYM+'%'),
+      sb.from('deposits').select('amount').gte('deposit_received_date', monYM+'-01').lte('deposit_received_date', window.monthEnd(monYM)),
+      sb.from('deposits').select('refund_amount').gt('refund_amount',0).gte('refund_date', monYM+'-01').lte('refund_date', window.monthEnd(monYM)),
+      sb.from('expenses').select('amount').eq('period_month', monYM+'-01'),
+      sb.from('owner_payments').select('amount').eq('period_month', monYM+'-01')
+    ]);
 
-    function makeTable(rows, cols) {
-      if(!rows.length) return '<div style="color:var(--muted);padding:10px;text-align:center">لا يوجد بيانات</div>';
-      var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.73rem">'
-        +'<thead><tr style="background:var(--panel2)">'
-        + cols.map(function(c){ return '<th style="padding:5px 7px;text-align:right">'+c.label+'</th>'; }).join('')
-        +'</tr></thead><tbody>';
-      rows.forEach(function(r){
-        html += '<tr style="border-bottom:1px solid var(--border)">'
-          + cols.map(function(c){ return '<td style="padding:5px 7px">'+esc(String(r[c.key]||'—'))+'</td>'; }).join('')
-          +'</tr>';
-      });
-      html += '</tbody></table></div>';
-      return html;
+    var snap_units  = snap.units || [];
+    var discMap     = snap.discMap || {};
+    var adjustMap   = snap.adjustMap || {};
+    var pays        = paysRes.data||[];
+    var deps        = depsRes.data||[];
+    var refDeps     = refDepsRes.data||[];
+    var exps        = expRes.data||[];
+    var owners      = ownerRes.data||[];
+
+    // ── حسابات مالية ──
+    var paidMap = {};
+    pays.forEach(function(p){ if(p.unit_id) paidMap[p.unit_id]=(paidMap[p.unit_id]||0)+(p.amount||0); });
+
+    var targetRent   = snap_units.reduce(function(s,u){ return s+calcEffectiveRent(u,discMap,adjustMap,monYM); },0);
+    var collectedRent= pays.reduce(function(s,p){ return s+(p.amount||0); },0);
+    var totalDeps    = deps.reduce(function(s,d){ return s+(d.amount||0); },0);
+    var totalRefunds = refDeps.reduce(function(s,d){ return s+(Number(d.refund_amount)||0); },0);
+    var totalExp     = exps.reduce(function(s,e){ return s+(e.amount||0); },0);
+    var totalOwner   = owners.reduce(function(s,o){ return s+(o.amount||0); },0);
+    var cashTotal    = collectedRent + totalDeps;
+    var netTotal     = cashTotal - totalRefunds - totalExp - totalOwner;
+
+    var actualUnpaid=0, overpaidAmt=0;
+    snap_units.forEach(function(u){
+      var eff=calcEffectiveRent(u,discMap,adjustMap,monYM);
+      var paid=paidMap[u.id]||0;
+      if(paid<eff) actualUnpaid+=eff-paid;
+      if(paid>eff) overpaidAmt +=paid-eff;
+    });
+
+    // ── أعداد الوحدات ──
+    var occupied   = audit.occupiedDuringMonthRows.length;
+    var vacant     = audit.vacantActualRows.length;
+    var leaving    = audit.endOfMonthLeaverRows.length;
+    var transfers  = audit.internalTransferRows.length;
+    var newTenants = audit.newTenantRows.length;
+
+    // ── Consistency Checks ──
+    var checks = [];
+    var issues = [];
+
+    // 1. مجموع المشغول + الشاغر معقول؟
+    var allUnitsCount = (await sb.from('units').select('id',{count:'exact',head:true})).count||0;
+    var occupiedPlusVacant = occupied + vacant;
+    if(occupiedPlusVacant <= allUnitsCount) {
+      checks.push({ok:true, label:'المشغول + الشاغر ≤ إجمالي الوحدات ('+allUnitsCount+')'});
+    } else {
+      checks.push({ok:false, label:'المشغول + الشاغر ('+occupiedPlusVacant+') > إجمالي الوحدات ('+allUnitsCount+')'});
+      issues.push('عدد الوحدات المحسوبة ('+occupiedPlusVacant+') يتجاوز الإجمالي الفعلي ('+allUnitsCount+')');
     }
 
-    var sections = [
-      {
-        title: '🏢 مشغولة خلال الشهر ('+audit.occupiedDuringMonthRows.length+')',
-        color: 'var(--accent)',
-        html: makeTable(audit.occupiedDuringMonthRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}])
-      },
-      {
-        title: '🏚️ شاغرة فعلياً ('+audit.vacantActualRows.length+')',
-        color: 'var(--red)',
-        html: makeTable(audit.vacantActualRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'آخر مستأجر',key:'lastTenant'},{label:'آخر خروج',key:'lastEndDate'},{label:'شاغرة من',key:'vacantFrom'},{label:'أيام',key:'daysVacant'},{label:'إيجار ضائع',key:'lostRent'}])
-      },
-      {
-        title: '📤 خروج آخر الشهر ('+audit.endOfMonthLeaverRows.length+')',
-        color: 'var(--amber)',
-        html: makeTable(audit.endOfMonthLeaverRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'الإيجار',key:'rent'},{label:'تاريخ الخروج',key:'endDate'},{label:'متاح من',key:'availableFrom'}])
-      },
-      {
-        title: '🔄 نقل داخلي ('+audit.internalTransferRows.length+')',
-        color: 'var(--accent)',
-        html: makeTable(audit.internalTransferRows, [{label:'المستأجر',key:'tenant'},{label:'من',key:'fromApt'},{label:'غرفة',key:'fromRoom'},{label:'إلى',key:'toApt'},{label:'غرفة',key:'toRoom'},{label:'تاريخ النقل',key:'transferDate'}])
-      },
-      {
-        title: '🆕 مستأجرين جدد ('+audit.newTenantRows.length+')',
-        color: 'var(--green)',
-        html: makeTable(audit.newTenantRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'تاريخ الدخول',key:'startDate'},{label:'الإيجار',key:'monthlyRent'},{label:'التأمين',key:'depositPaid'}])
-      }
-    ];
+    // 2. الجدد مش موجودين في النقل الداخلي؟
+    var newInternalOverlap = audit.newTenantRows.filter(function(n){
+      return n.source === 'internal_transfer_in';
+    }).length;
+    if(newInternalOverlap === 0) {
+      checks.push({ok:true, label:'لا يوجد تداخل بين الجدد والنقل الداخلي'});
+    } else {
+      checks.push({ok:false, label:'فيه '+newInternalOverlap+' مستأجر محسوب كـ "جديد" و"نقل داخلي" في نفس الوقت'});
+      issues.push(newInternalOverlap+' مستأجر مكرر بين الجدد والنقل الداخلي');
+    }
 
-    var html = '<div style="display:flex;flex-direction:column;gap:16px">';
-    sections.forEach(function(sec){
-      html += '<div style="border:1.5px solid '+sec.color+'44;border-radius:10px;overflow:hidden">'
-        +'<div style="background:'+sec.color+'18;padding:9px 14px;font-weight:700;font-size:.82rem;color:'+sec.color+'">'+esc(sec.title)+'</div>'
-        +'<div style="padding:8px">'+sec.html+'</div>'
+    // 3. الإيجار المحصّل ≤ المستهدف + 10%؟
+    var collPct = targetRent>0 ? Math.round(collectedRent/targetRent*100) : 0;
+    if(collectedRent <= targetRent*1.2) {
+      checks.push({ok:true, label:'الإيجار المحصّل ('+collPct+'%) في النطاق المعقول'});
+    } else {
+      checks.push({ok:false, label:'الإيجار المحصّل أعلى من المستهدف بأكثر من 20%'});
+      issues.push('إيجار محصّل ('+collectedRent.toLocaleString()+') يتجاوز المستهدف ('+targetRent.toLocaleString()+') بكثير');
+    }
+
+    // 4. المغادرون مش موجودين في المشغولين؟
+    var leavingApts = new Set(audit.endOfMonthLeaverRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); }));
+    var occupiedApts = new Set(audit.occupiedDuringMonthRows.map(function(r){ return String(r.apartment)+'|'+String(r.room); }));
+    var leavingInOccupied = [...leavingApts].filter(function(k){ return occupiedApts.has(k); }).length;
+    if(leavingInOccupied === 0) {
+      checks.push({ok:true, label:'المغادرون نهاية الشهر لا يتداخلون مع المشغولين'});
+    } else {
+      checks.push({ok:false, label:leavingInOccupied+' وحدة مغادِرة محسوبة أيضاً كمشغولة'});
+      issues.push(leavingInOccupied+' وحدة مغادِرة تظهر في قائمة المشغولين — تحقق من end_date');
+    }
+
+    // ── Audit Status ──
+    var passed = issues.length === 0;
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    // ── Build HTML ──
+    var html = '';
+
+    // Status Banner
+    html += '<div style="border-radius:10px;padding:14px 16px;margin-bottom:16px;background:'+(passed?'var(--green)':'var(--red)')+'18;border:2px solid '+(passed?'var(--green)':'var(--red)')+'55;display:flex;align-items:center;gap:12px">'
+      +'<div style="font-size:1.6rem">'+(passed?'🟢':'🔴')+'</div>'
+      +'<div><div style="font-weight:800;font-size:.95rem;color:'+(passed?'var(--green)':'var(--red)')+'">'+( passed?'Audit Passed — كل الأرقام متطابقة':'Audit Failed — '+issues.length+' مشكلة تحتاج مراجعة')+'</div>'
+      +'<div style="font-size:.7rem;color:var(--muted);margin-top:2px">'+monYM+' | Snapshot: '+snap_units.length+' وحدة</div></div>'
+      +'</div>';
+
+    // Section 1: Unit Status Cards
+    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">📋 حالة الوحدات</div>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">';
+    var cards = [
+      {label:'مشغولة', val:occupied,   color:'var(--accent)', key:'occupied'},
+      {label:'شاغرة فعلياً', val:vacant,    color:'var(--red)',    key:'vacant'},
+      {label:'خروج آخر الشهر', val:leaving,   color:'var(--amber)',  key:'leaving'},
+      {label:'نقل داخلي', val:transfers, color:'var(--accent)', key:'transfers'},
+      {label:'مستأجرين جدد', val:newTenants,color:'var(--green)',  key:'new'},
+      {label:'Snapshot', val:snap_units.length, color:'var(--muted)', key:'snap'}
+    ];
+    cards.forEach(function(c){
+      html += '<div onclick="window._auditShowDetail(\''+c.key+'\')" style="background:'+c.color+'12;border:1.5px solid '+c.color+'44;border-radius:10px;padding:10px;text-align:center;cursor:pointer;transition:opacity .2s" onmouseover="this.style.opacity=\'.8\'" onmouseout="this.style.opacity=\'1\'">'
+        +'<div style="font-size:1.5rem;font-weight:800;color:'+c.color+'">'+c.val+'</div>'
+        +'<div style="font-size:.65rem;color:var(--muted);margin-top:2px">'+c.label+'</div>'
         +'</div>';
     });
     html += '</div>';
 
-    // عرض في modal
-    var modal = document.getElementById('dashAuditModal');
-    if(!modal){
-      modal = document.createElement('div');
-      modal.id = 'dashAuditModal';
-      modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
-      modal.innerHTML = '<div style="background:var(--panel);border-radius:14px;width:100%;max-width:800px;padding:20px;position:relative">'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
-        +'<div style="font-weight:800;font-size:1rem">🔍 تدقيق الشهر — '+monYM+'</div>'
-        +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.8rem">✕ إغلاق</button>'
-        +'</div>'
-        +'<div id="dashAuditContent"></div>'
+    // Section 2: Financial Summary
+    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">💰 التحقق المالي</div>';
+    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    var finRows = [
+      {label:'🎯 الإيجار المستهدف',   val:targetRent.toLocaleString()+' AED',   color:'var(--text2)'},
+      {label:'✅ الإيجار المحصّل',     val:collectedRent.toLocaleString()+' AED', color:'var(--green)'},
+      {label:'❌ متبقي فعلي',          val:actualUnpaid.toLocaleString()+' AED',  color:'var(--red)'},
+      {label:'↪️ زيادات / مقدم',      val:overpaidAmt.toLocaleString()+' AED',   color:'var(--accent)'},
+      {label:'🔒 تأمينات محصّلة',     val:totalDeps.toLocaleString()+' AED',     color:'var(--accent)'},
+      {label:'↩️ تأمينات مُرتجعة',   val:totalRefunds.toLocaleString()+' AED',  color:'var(--red)'},
+      {label:'💵 إجمالي الكاش',       val:cashTotal.toLocaleString()+' AED',     color:'var(--green)', bold:true},
+      {label:'🏦 الصافي',             val:netTotal.toLocaleString()+' AED',      color:netTotal>=0?'var(--green)':'var(--red)', bold:true}
+    ];
+    finRows.forEach(function(r){
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:.75rem;color:var(--muted)">'+r.label+'</span>'
+        +'<span style="font-size:.8rem;font-weight:'+(r.bold?'800':'600')+';color:'+r.color+'">'+r.val+'</span>'
         +'</div>';
-      document.body.appendChild(modal);
-    } else {
-      modal.querySelector('#dashAuditContent') && (modal.querySelector('#dashAuditContent').innerHTML = '');
-      modal.style.display = 'flex';
+    });
+    html += '</div>';
+
+    // Section 3: Consistency Checks
+    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">🔎 فحص التناسق</div>';
+    html += '<div style="background:var(--panel2);border-radius:10px;padding:12px;margin-bottom:16px">';
+    checks.forEach(function(c){
+      html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:.85rem">'+(c.ok?'✅':'❌')+'</span>'
+        +'<span style="font-size:.73rem;color:'+(c.ok?'var(--text2)':'var(--red)')+'">'+esc(c.label)+'</span>'
+        +'</div>';
+    });
+    html += '</div>';
+
+    // Section 4: Issues (if any)
+    if(issues.length) {
+      html += '<div style="font-weight:700;font-size:.8rem;color:var(--red);margin-bottom:8px;letter-spacing:.05em">⚠️ المشاكل المكتشفة</div>';
+      html += '<div style="background:var(--red)08;border:1px solid var(--red)33;border-radius:10px;padding:12px;margin-bottom:16px">';
+      issues.forEach(function(iss){
+        html += '<div style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--red)22">'
+          +'<span>⚠️</span><span style="font-size:.73rem;color:var(--red)">'+esc(iss)+'</span></div>';
+      });
+      html += '</div>';
     }
-    var content = modal.querySelector('#dashAuditContent') || modal.querySelector('div > div:last-child');
-    if(content) content.innerHTML = html;
+
+    // Section 5: Detail Buttons
+    html += '<div style="font-weight:700;font-size:.8rem;color:var(--muted);margin-bottom:8px;letter-spacing:.05em">📂 التفاصيل (عند الطلب)</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">';
+    var detailBtns = [
+      {key:'vacant',    label:'📋 الشاغر الفعلي',          color:'var(--red)'},
+      {key:'leaving',   label:'🚪 خروج آخر الشهر',         color:'var(--amber)'},
+      {key:'transfers', label:'🔄 النقل الداخلي',           color:'var(--accent)'},
+      {key:'new',       label:'👥 المستأجرين الجدد',        color:'var(--green)'},
+      {key:'occupied',  label:'🏢 المشغولون خلال الشهر',   color:'var(--accent)'},
+      {key:'snap',      label:'📊 Snapshot التفاصيل',       color:'var(--muted)'}
+    ];
+    detailBtns.forEach(function(b){
+      html += '<button onclick="window._auditShowDetail(\''+b.key+'\')" style="background:'+b.color+'12;border:1.5px solid '+b.color+'44;border-radius:8px;padding:8px;font-size:.73rem;font-weight:700;color:'+b.color+';cursor:pointer">'+b.label+'</button>';
+    });
+    html += '</div>';
+
+    // Detail area (lazy loaded)
+    html += '<div id="auditDetailArea" style="margin-top:12px"></div>';
+
+    // ── Show Modal ──
+    var modal = document.getElementById('dashAuditModal');
+    if(modal) modal.remove();
+    modal = document.createElement('div');
+    modal.id = 'dashAuditModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0009;display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow-y:auto';
+    modal.innerHTML = '<div style="background:var(--panel);border-radius:14px;width:100%;max-width:680px;padding:18px;position:relative">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'
+      +'<div style="font-weight:800;font-size:1rem">🔍 تدقيق الشهر — '+monYM+'</div>'
+      +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.8rem">✕</button>'
+      +'</div>'
+      +'<div id="dashAuditContent"></div>'
+      +'</div>';
+    document.body.appendChild(modal);
+    document.getElementById('dashAuditContent').innerHTML = html;
+
+    // ── Detail loader (lazy) ──
+    var _auditData = audit;
+    var esc2 = esc;
+    window._auditShowDetail = function(key) {
+      var area = document.getElementById('auditDetailArea');
+      if(!area) return;
+      function makeTable(rows, cols) {
+        if(!rows||!rows.length) return '<div style="color:var(--muted);padding:10px;text-align:center;font-size:.75rem">لا يوجد بيانات</div>';
+        var h='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.72rem"><thead><tr style="background:var(--panel2)">'
+          +cols.map(function(c){ return '<th style="padding:5px 7px;text-align:right">'+c.label+'</th>'; }).join('')
+          +'</tr></thead><tbody>';
+        rows.forEach(function(r){ h+='<tr style="border-bottom:1px solid var(--border)">'+cols.map(function(c){ return '<td style="padding:5px 7px">'+esc2(String(r[c.key]||'—'))+'</td>'; }).join('')+'</tr>'; });
+        return h+'</tbody></table></div>';
+      }
+      var configs = {
+        vacant:    {title:'📋 الشاغر الفعلي',          rows:_auditData.vacantActualRows,        cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'آخر مستأجر',key:'lastTenant'},{label:'شاغرة من',key:'vacantFrom'},{label:'أيام',key:'daysVacant'},{label:'إيجار ضائع',key:'lostRent'}]},
+        leaving:   {title:'🚪 خروج آخر الشهر',         rows:_auditData.endOfMonthLeaverRows,    cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'الإيجار',key:'rent'},{label:'تاريخ الخروج',key:'endDate'},{label:'متاح من',key:'availableFrom'}]},
+        transfers: {title:'🔄 النقل الداخلي',           rows:_auditData.internalTransferRows,    cols:[{label:'المستأجر',key:'tenant'},{label:'من',key:'fromApt'},{label:'غرفة',key:'fromRoom'},{label:'إلى',key:'toApt'},{label:'غرفة',key:'toRoom'},{label:'تاريخ النقل',key:'transferDate'}]},
+        new:       {title:'👥 المستأجرين الجدد',        rows:_auditData.newTenantRows,           cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'تاريخ الدخول',key:'startDate'},{label:'الإيجار',key:'monthlyRent'},{label:'التأمين',key:'depositPaid'}]},
+        occupied:  {title:'🏢 المشغولون خلال الشهر',   rows:_auditData.occupiedDuringMonthRows, cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]},
+        snap:      {title:'📊 Snapshot التفاصيل',       rows:snap_units,                         cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]}
+      };
+      var cfg = configs[key];
+      if(!cfg) return;
+      area.innerHTML = '<div style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-top:4px">'
+        +'<div style="background:var(--panel2);padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between">'
+        +'<span>'+cfg.title+' ('+cfg.rows.length+')</span>'
+        +'<span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:var(--muted)">✕</span>'
+        +'</div>'
+        +makeTable(cfg.rows, cfg.cols)+'</div>';
+      area.scrollIntoView({behavior:'smooth',block:'nearest'});
+    };
 
   } catch(e) {
     toast('خطأ في التدقيق: '+e.message, 'err');
@@ -1297,6 +1458,8 @@ async function loadDashboardAudit(monYM) {
     if(btn){ btn.disabled=false; btn.innerHTML=origTxt; }
   }
 }
+
+
 
 window.loadDashboardAudit = loadDashboardAudit;
 window.loadSmartDash       = loadSmartDash;
