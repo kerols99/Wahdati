@@ -2188,6 +2188,96 @@ window.loadDepDeductionsReport = loadDepDeductionsReport;
 window.exportDepDeductionsPDF  = exportDepDeductionsPDF;
 
 // ══════════════════════════════════════════════════════
+// AUDIT DATA LAYER — Query Once, Reuse Everywhere
+// ══════════════════════════════════════════════════════
+async function buildMonthAuditData(monYM) {
+  var monStart = monYM+'-01';
+  var monEnd   = window.monthEnd(monYM);
+  var nextYM   = (function(){ var d=new Date(monStart); d.setMonth(d.getMonth()+1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); })();
+  var monNextStart    = nextYM+'-01';
+  var prevMonthLastDay = (function(){ var d=new Date(monStart); d.setDate(d.getDate()-1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+  var [unitsRes, histRes, transfersRes, movesRes, depsRes, histStartRes] = await Promise.all([
+    sb.from('units').select('id,apartment,room,monthly_rent,is_vacant,unit_status,start_date,tenant_name,phone,persons_count,first_month_rent,deposit'),
+    sb.from('unit_history').select('unit_id,apartment,room,tenant_name,phone,monthly_rent,first_month_rent,deposit,persons_count,start_date,end_date,snapshot_type,notes').order('end_date',{ascending:false}),
+    sb.from('internal_transfers').select('from_unit_id,to_unit_id,from_snapshot,to_snapshot,transfer_date,notes').gte('transfer_date',prevMonthLastDay).lte('transfer_date',monEnd),
+    sb.from('moves').select('unit_id,apartment,room,tenant_name,phone,new_rent,new_deposit,new_persons,new_start_date,type,status').eq('type','arrive').eq('status','done').gte('new_start_date',monStart).lte('new_start_date',monEnd),
+    sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,deposit_received_date').gte('deposit_received_date',monStart).lte('deposit_received_date',monEnd),
+    sb.from('unit_history').select('unit_id,apartment,room,tenant_name,monthly_rent,first_month_rent,deposit,persons_count,phone,start_date,end_date,snapshot_type').gte('start_date',prevMonthLastDay).lte('start_date',monEnd)
+  ]);
+  return { monYM:monYM, monStart:monStart, monEnd:monEnd, nextYM:nextYM, monNextStart:monNextStart, prevMonthLastDay:prevMonthLastDay, units:unitsRes.data||[], hist:histRes.data||[], transfers:transfersRes.data||[], moves:movesRes.data||[], deps:depsRes.data||[], histStart:histStartRes.data||[] };
+}
+
+function getVacantActualRows(data) {
+  var monYM=data.monYM, monStart=data.monStart, monEnd=data.monEnd;
+  var results = [];
+  data.units.forEach(function(u){
+    var isOccupiedNow = !u.is_vacant && u.unit_status!=='available' && u.unit_status!=='maintenance';
+    if(isOccupiedNow && u.start_date){ var e=getEffectiveStartMonth(u.start_date); if(e && e<=monYM) return; }
+    var relevantHist = data.hist.filter(function(h){ if(h.unit_id!==u.id) return false; if(h.snapshot_type==='rent_change'||h.snapshot_type==='internal_transfer_in') return false; var e=getEffectiveStartMonth(h.start_date); if(e && e>monYM) return false; return true; }).sort(function(a,b){ return (b.end_date||'')<(a.end_date||'')?-1:1; });
+    var lastTenant=relevantHist[0]||null, endDate=lastTenant?(lastTenant.end_date||''):null, vacMonth=endDate?getVacancyMonth(endDate):null;
+    if(vacMonth && vacMonth!==monYM){ if(!(vacMonth<monYM)) return; }
+    var newerTenant=data.hist.find(function(h){ if(h.unit_id!==u.id) return false; if(h.snapshot_type==='rent_change'||h.snapshot_type==='internal_transfer_out') return false; var e=getEffectiveStartMonth(h.start_date); if(!e||e>monYM) return false; return (!endDate||(h.end_date||'')>endDate); });
+    if(newerTenant) return;
+    var isV=false, vacantFrom=monStart, daysV=0;
+    if(!lastTenant){ isV=true; vacantFrom=monStart; daysV=Math.round((new Date(monEnd)-new Date(monStart))/864e5)+1; }
+    else if(vacMonth<monYM){ isV=true; vacantFrom=monStart; daysV=Math.round((new Date(monEnd)-new Date(monStart))/864e5)+1; }
+    else if(vacMonth===monYM){ var from; if(endDate.slice(8,10)==='01'){ from=endDate; }else{ var _d=new Date(endDate); _d.setDate(_d.getDate()+1); from=_d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0'); } isV=true; vacantFrom=from; daysV=Math.round((new Date(monEnd)-new Date(from))/864e5)+1; }
+    if(!isV) return;
+    var estRent=lastTenant&&(lastTenant.monthly_rent||0)>0?(lastTenant.monthly_rent||0):(u.monthly_rent||0);
+    results.push({apartment:u.apartment,room:u.room,lastTenant:lastTenant?(lastTenant.tenant_name||'—'):'No Previous Tenant',lastEndDate:lastTenant?(lastTenant.end_date||'—'):'—',vacantFrom:vacantFrom,daysVacant:daysV,lostRent:estRent,isEstimated:!lastTenant});
+  });
+  results.sort(function(a,b){ var an=Number(a.apartment)||0,bn=Number(b.apartment)||0; if(an!==bn) return an-bn; return (Number(a.room)||0)-(Number(b.room)||0); });
+  return results;
+}
+
+function getEndOfMonthLeaverRows(data) {
+  var nextYM=data.nextYM, monNextStart=data.monNextStart;
+  var results=(data.hist||[]).filter(function(h){ if(h.snapshot_type==='rent_change'||h.snapshot_type==='internal_transfer_in') return false; if((h.end_date||'')<data.monStart||(h.end_date||'')>monNextStart) return false; return getVacancyMonth(h.end_date)===nextYM; }).map(function(h){ return {apartment:h.apartment,room:h.room,tenant:h.tenant_name||'—',rent:h.monthly_rent||0,endDate:h.end_date,availableFrom:monNextStart,phone:h.phone||'—',notes:h.snapshot_type==='internal_transfer_out'?'نقل داخلي':(h.notes||'')}; });
+  results.sort(function(a,b){ var an=Number(a.apartment)||0,bn=Number(b.apartment)||0; if(an!==bn) return an-bn; return (Number(a.room)||0)-(Number(b.room)||0); });
+  return results;
+}
+
+function getInternalTransferRows(data) {
+  var monYM=data.monYM;
+  var out=(data.hist||[]).filter(function(h){ return h.snapshot_type==='internal_transfer_out' && getEffectiveStartMonth(h.end_date)===monYM; });
+  var results=out.map(function(h){ var match=(data.transfers||[]).find(function(t){ return t.from_unit_id===h.unit_id; }); var toApt='—',toRoom='—',newRent='—'; if(match){ try{ var s=typeof match.to_snapshot==='string'?JSON.parse(match.to_snapshot):match.to_snapshot; toApt=s.apartment||'—'; toRoom=s.room||'—'; newRent=s.monthly_rent||'—'; }catch(_){} } return {tenant:h.tenant_name||'—',fromApt:h.apartment,fromRoom:h.room,toApt:toApt,toRoom:toRoom,transferDate:h.end_date,oldRent:h.monthly_rent||0,newRent:newRent,deposit:h.deposit||0,notes:h.notes||''};});
+  results.sort(function(a,b){ return (a.transferDate||'')<(b.transferDate||'')?-1:1; });
+  return results;
+}
+
+function getNewTenantRows(data) {
+  var monYM=data.monYM;
+  var tins=new Set((data.hist||[]).filter(function(h){ return h.snapshot_type==='internal_transfer_in' && getEffectiveStartMonth(h.start_date)===monYM; }).map(function(h){ return h.unit_id; }));
+  var depMap={},depDateMap={};
+  (data.deps||[]).forEach(function(d){ depMap[d.unit_id]=(depMap[d.unit_id]||0)+(Number(d.amount)||0); depDateMap[d.unit_id]=d.deposit_received_date; });
+  var results=[],seen=new Set();
+  function key(x){ return [String(x.apartment||''),String(x.room||''),String(x.tenant_name||x.tenant||'').trim().toLowerCase(),String(x.start_date||x.startDate||x.new_start_date||'').slice(0,10)].join('|'); }
+  (data.units||[]).forEach(function(u){ if(getEffectiveStartMonth(u.start_date)!==monYM) return; var k=key(u); if(seen.has(k)) return; seen.add(k); results.push({apartment:u.apartment,room:u.room,tenant:u.tenant_name||'—',phone:u.phone||'—',startDate:u.start_date,personsCount:u.persons_count||0,monthlyRent:u.monthly_rent||0,firstMonthRent:u.first_month_rent||null,depositPaid:depMap[u.id]||0,depositDate:depDateMap[u.id]||'—',source:tins.has(u.id)?'internal_transfer_in':'new'}); });
+  (data.moves||[]).forEach(function(m){ if(getEffectiveStartMonth(m.new_start_date)!==monYM) return; var k=key(m); if(seen.has(k)) return; seen.add(k); results.push({apartment:m.apartment,room:m.room,tenant:m.tenant_name||'—',phone:m.phone||'—',startDate:m.new_start_date,personsCount:m.new_persons||0,monthlyRent:m.new_rent||0,firstMonthRent:null,depositPaid:m.new_deposit||depMap[m.unit_id]||0,depositDate:depDateMap[m.unit_id]||'—',source:tins.has(m.unit_id)?'internal_transfer_in':'new'}); });
+  (data.histStart||[]).forEach(function(h){ if(getEffectiveStartMonth(h.start_date)!==monYM) return; if(!h.tenant_name||h.tenant_name==='—'||h.tenant_name==='——') return; if(!h.monthly_rent||h.monthly_rent<=0) return; if(h.snapshot_type==='rent_change'||h.snapshot_type==='internal_transfer_in') return; var k=key(h); if(seen.has(k)) return; seen.add(k); results.push({apartment:h.apartment,room:h.room,tenant:h.tenant_name||'—',phone:h.phone||'—',startDate:h.start_date,personsCount:h.persons_count||0,monthlyRent:h.monthly_rent||0,firstMonthRent:h.first_month_rent||null,depositPaid:h.deposit||depMap[h.unit_id]||0,depositDate:depDateMap[h.unit_id]||'—',source:'new'}); });
+  results.sort(function(a,b){ var an=Number(a.apartment)||0,bn=Number(b.apartment)||0; if(an!==bn) return an-bn; return (Number(a.room)||0)-(Number(b.room)||0); });
+  return results;
+}
+
+async function buildMonthAudit(monYM) {
+  var snap = await buildMonthSnapshot(monYM);
+  var data = await buildMonthAuditData(monYM);
+  return {
+    occupiedDuringMonthRows: snap.units,
+    vacantActualRows:        getVacantActualRows(data),
+    endOfMonthLeaverRows:    getEndOfMonthLeaverRows(data),
+    internalTransferRows:    getInternalTransferRows(data),
+    newTenantRows:           getNewTenantRows(data)
+  };
+}
+window.buildMonthAudit       = buildMonthAudit;
+window.buildMonthAuditData   = buildMonthAuditData;
+window.getVacantActualRows   = getVacantActualRows;
+window.getEndOfMonthLeaverRows = getEndOfMonthLeaverRows;
+window.getInternalTransferRows = getInternalTransferRows;
+window.getNewTenantRows      = getNewTenantRows;
+
+// ══════════════════════════════════════════════════════
 // ══════════════════════════════════════════════════════
 // REPORT 1: تقرير الشاغر الفعلي خلال الشهر
 // وحدات شاغرة فعلاً قبل الشهر أو أصبحت شاغرة داخله

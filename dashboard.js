@@ -232,6 +232,13 @@ async function loadSmartDash(ym) {
         +' <b style="color:'+diffColor+'">'+diffArrow+diffPct+'%</b>';
     }
 
+    // زر تدقيق الشهر — يعرض الشهر الحالي المختار
+    if(el('dash-audit-btn')){
+      el('dash-audit-btn').onclick = function(){
+        loadDashboardAudit(ym);
+      };
+    }
+
     var { data: pendingBookings }  = await sb.from('moves').select('id').eq('type','arrive').eq('status','pending');
     var { data: pendingTransfers } = await sb.from('internal_transfers').select('id').like('notes','%مجدوله%');
     if(el('dash-pending-bookings'))  el('dash-pending-bookings').textContent  = (pendingBookings||[]).length;
@@ -1198,6 +1205,100 @@ async function activateReservedUnits() {
   finally { window._activatingUnits = false; }
 }
 
+// ══════════════════════════════════════════════════════
+// DASHBOARD AUDIT — زر "تدقيق الشهر"
+// ══════════════════════════════════════════════════════
+async function loadDashboardAudit(monYM) {
+  var btn = document.getElementById('dash-audit-btn');
+  var origTxt = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled=true; btn.innerHTML='<span class="spin"></span>'; }
+
+  try {
+    var audit = await buildMonthAudit(monYM);
+    var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+
+    function makeTable(rows, cols) {
+      if(!rows.length) return '<div style="color:var(--muted);padding:10px;text-align:center">لا يوجد بيانات</div>';
+      var html = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.73rem">'
+        +'<thead><tr style="background:var(--panel2)">'
+        + cols.map(function(c){ return '<th style="padding:5px 7px;text-align:right">'+c.label+'</th>'; }).join('')
+        +'</tr></thead><tbody>';
+      rows.forEach(function(r){
+        html += '<tr style="border-bottom:1px solid var(--border)">'
+          + cols.map(function(c){ return '<td style="padding:5px 7px">'+esc(String(r[c.key]||'—'))+'</td>'; }).join('')
+          +'</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    }
+
+    var sections = [
+      {
+        title: '🏢 مشغولة خلال الشهر ('+audit.occupiedDuringMonthRows.length+')',
+        color: 'var(--accent)',
+        html: makeTable(audit.occupiedDuringMonthRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}])
+      },
+      {
+        title: '🏚️ شاغرة فعلياً ('+audit.vacantActualRows.length+')',
+        color: 'var(--red)',
+        html: makeTable(audit.vacantActualRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'آخر مستأجر',key:'lastTenant'},{label:'آخر خروج',key:'lastEndDate'},{label:'شاغرة من',key:'vacantFrom'},{label:'أيام',key:'daysVacant'},{label:'إيجار ضائع',key:'lostRent'}])
+      },
+      {
+        title: '📤 خروج آخر الشهر ('+audit.endOfMonthLeaverRows.length+')',
+        color: 'var(--amber)',
+        html: makeTable(audit.endOfMonthLeaverRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'الإيجار',key:'rent'},{label:'تاريخ الخروج',key:'endDate'},{label:'متاح من',key:'availableFrom'}])
+      },
+      {
+        title: '🔄 نقل داخلي ('+audit.internalTransferRows.length+')',
+        color: 'var(--accent)',
+        html: makeTable(audit.internalTransferRows, [{label:'المستأجر',key:'tenant'},{label:'من',key:'fromApt'},{label:'غرفة',key:'fromRoom'},{label:'إلى',key:'toApt'},{label:'غرفة',key:'toRoom'},{label:'تاريخ النقل',key:'transferDate'}])
+      },
+      {
+        title: '🆕 مستأجرين جدد ('+audit.newTenantRows.length+')',
+        color: 'var(--green)',
+        html: makeTable(audit.newTenantRows, [{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant'},{label:'تاريخ الدخول',key:'startDate'},{label:'الإيجار',key:'monthlyRent'},{label:'التأمين',key:'depositPaid'}])
+      }
+    ];
+
+    var html = '<div style="display:flex;flex-direction:column;gap:16px">';
+    sections.forEach(function(sec){
+      html += '<div style="border:1.5px solid '+sec.color+'44;border-radius:10px;overflow:hidden">'
+        +'<div style="background:'+sec.color+'18;padding:9px 14px;font-weight:700;font-size:.82rem;color:'+sec.color+'">'+esc(sec.title)+'</div>'
+        +'<div style="padding:8px">'+sec.html+'</div>'
+        +'</div>';
+    });
+    html += '</div>';
+
+    // عرض في modal
+    var modal = document.getElementById('dashAuditModal');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'dashAuditModal';
+      modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+      modal.innerHTML = '<div style="background:var(--panel);border-radius:14px;width:100%;max-width:800px;padding:20px;position:relative">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'
+        +'<div style="font-weight:800;font-size:1rem">🔍 تدقيق الشهر — '+monYM+'</div>'
+        +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.8rem">✕ إغلاق</button>'
+        +'</div>'
+        +'<div id="dashAuditContent"></div>'
+        +'</div>';
+      document.body.appendChild(modal);
+    } else {
+      modal.querySelector('#dashAuditContent') && (modal.querySelector('#dashAuditContent').innerHTML = '');
+      modal.style.display = 'flex';
+    }
+    var content = modal.querySelector('#dashAuditContent') || modal.querySelector('div > div:last-child');
+    if(content) content.innerHTML = html;
+
+  } catch(e) {
+    toast('خطأ في التدقيق: '+e.message, 'err');
+    console.error('loadDashboardAudit:', e);
+  } finally {
+    if(btn){ btn.disabled=false; btn.innerHTML=origTxt; }
+  }
+}
+
+window.loadDashboardAudit = loadDashboardAudit;
 window.loadSmartDash       = loadSmartDash;
 window.repeatLastPayment   = repeatLastPayment;
 window.loadLastPayment     = loadLastPayment;
