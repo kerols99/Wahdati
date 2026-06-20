@@ -1470,7 +1470,7 @@ async function loadDashboardAudit(monYM) {
         +'<div style="font-weight:800;font-size:.95rem;color:#111">🔍 تدقيق الشهر — '+monYM+'</div>'
         +'<div style="display:flex;gap:6px">'
           +'<button onclick="window._auditPrint()" style="background:#f5f5f5;border:1px solid #ddd;color:#333;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.75rem;font-weight:700">🖨️ طباعة</button>'
-          +'<button onclick="window._auditExportPDF()" style="background:#f5f5f5;border:1px solid #ddd;color:#333;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.75rem;font-weight:700">📄 PDF</button>'
+          +'<button onclick="window._auditExportPDF()" style="background:#f5f5f5;border:1px solid #ddd;color:#333;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.75rem;font-weight:700">📄 PDF / طباعة</button>'
           +'<button onclick="document.getElementById(\'dashAuditModal\').remove()" style="background:#fff;border:2px solid #111;color:#111;border-radius:8px;padding:5px 14px;cursor:pointer;font-size:.8rem;font-weight:800">✕ إغلاق</button>'
         +'</div>'
       +'</div>'
@@ -1570,6 +1570,19 @@ async function loadDashboardAudit(monYM) {
             lhtml+='<tr style="background:'+(f%2?'#f9f9f9':'#fff')+'">'+td('الدور '+f,true)+td(S(fl.target))+td(S(fl.collected))+'<td style="padding:6px 10px;border:1px solid #ddd;font-size:.73rem;color:'+(rem>0?'#c62828':'#2e7d32')+'">'+S(rem)+'</td>'+td(S(fl.deps))+td(S(fl.refunds))+'<td style="padding:6px 10px;border:1px solid #ddd;font-size:.73rem;font-weight:700;color:'+(net>=0?'#2e7d32':'#c62828')+'">'+S(net)+'</td></tr>';
           });
           lhtml+='<tr style="background:#1a3a6a;color:#fff;font-weight:800"><td style="padding:6px 10px;font-size:.73rem">الإجمالي</td><td style="padding:6px 10px;font-size:.73px">'+S(tot.t)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.c)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.t-tot.c)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.d)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.r)+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(tot.c+tot.d-tot.r)+'</td></tr></tbody></table></div>';
+          // vacant actual by floor
+          var vacByFloor={};
+          (_auditData.vacantActualRows||[]).forEach(function(r){ var f=getFloor(r.apartment); if(!vacByFloor[f]) vacByFloor[f]={count:0,lostRent:0,days:0}; vacByFloor[f].count++; vacByFloor[f].lostRent+=(r.lostRent||0); vacByFloor[f].days+=(r.daysVacant||0); });
+          var vf=Object.keys(vacByFloor).map(Number).sort(function(a,b){return a-b;});
+          if(vf.length){ var vt={count:0,lostRent:0};
+            lhtml+='<div style="font-weight:700;font-size:.8rem;color:#c62828;margin-bottom:6px">🏚️ الشاغر الفعلي</div><div style="overflow-x:auto;margin-bottom:6px"><table style="width:100%;border-collapse:collapse"><thead><tr>'+th('الدور')+th('عدد الوحدات')+th('الإيجار الضائع')+th('متوسط أيام')+'</tr></thead><tbody>';
+            vf.forEach(function(f){ var v=vacByFloor[f]; vt.count+=v.count;vt.lostRent+=v.lostRent; var avgDays=v.count?Math.round(v.days/v.count):0;
+              lhtml+='<tr style="background:'+(f%2?'#f9f9f9':'#fff')+'">'+td('الدور '+f,true)+td(v.count)+td(S(v.lostRent))+td(avgDays)+'</tr>';
+            });
+            lhtml+='<tr style="background:#c62828;color:#fff;font-weight:800"><td style="padding:6px 10px;font-size:.73rem">الإجمالي</td><td style="padding:6px 10px;font-size:.73rem">'+vt.count+'</td><td style="padding:6px 10px;font-size:.73rem">'+S(vt.lostRent)+' AED</td><td style="padding:6px 10px;font-size:.73rem">—</td></tr></tbody></table></div>'
+            +'<button onclick="window._ledgerDetail(\'vacant\')" style="background:#f8f9fa;border:2px solid #c62828;border-radius:8px;padding:6px 14px;font-size:.72rem;font-weight:700;color:#c62828;cursor:pointer;margin-bottom:14px">📋 عرض تفاصيل الشاغر</button>';
+          }
+
           // new tenants
           var nf=Object.keys(newByFloor).map(Number).sort(function(a,b){return a-b;});
           if(nf.length){ var nt={count:0,rent:0,deps:0};
@@ -1587,7 +1600,7 @@ async function loadDashboardAudit(monYM) {
           // detail buttons
           lhtml+='<div style="font-weight:700;font-size:.8rem;color:#555;margin-bottom:8px">📂 التفاصيل (عند الطلب)</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px">';
           [{k:'pays',l:'💳 إيجار محصّل'},{k:'deps',l:'🔒 تأمينات'},{k:'refs',l:'↩️ مرتجعات'},{k:'exps',l:'💸 مصاريف'},{k:'own',l:'👤 دفع المالك'},{k:'target',l:'🎯 مستهدف (Snapshot)'}].forEach(function(b){
-            lhtml+='<button onclick="window._ledgerDetail(\''+b.k+'\')" style="background:#f8f9fa;border:2px solid #1a3a6a44;border-radius:8px;padding:7px;font-size:.72rem;font-weight:700;color:#1a3a6a;cursor:pointer">'+b.l+'</button>';
+            lhtml+='<button onclick="window._ledgerDetail(\''+b.k+'\')" style="background:#f8f9fa;border:2px solid #1a3a6a;border-radius:8px;padding:7px;font-size:.72rem;font-weight:700;color:#111;cursor:pointer">'+b.l+'</button>';
           });
           lhtml+='</div><div id="ledgerDetailArea"></div></div>';
           area.innerHTML='<div style="border:2px solid #e0c860;border-radius:10px;overflow:hidden"><div style="background:#f9f5e0;padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between;align-items:center"><span style="color:#7a6000">📒 دفتر الشهر — '+monYM+'</span><div style="display:flex;gap:6px"><button onclick="window._auditLedgerPrint()" style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:3px 10px;font-size:.7rem;cursor:pointer">🖨️ طباعة</button><span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:#999;font-weight:700;padding:2px 8px">✕</span></div></div><div style="padding:12px">'+lhtml+'</div></div>';
@@ -1598,7 +1611,8 @@ async function loadDashboardAudit(monYM) {
             refs:{rows:ledgerRefunds,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المُرتجع',key:'refund_amount'},{label:'تاريخ الإرجاع',key:'refund_date'}]},
             exps:{rows:ledgerExp,cols:[{label:'الفئة',key:'category'},{label:'الوصف',key:'description'},{label:'المبلغ',key:'amount'}]},
             own:{rows:ledgerOwner,cols:[{label:'المبلغ',key:'amount'},{label:'الشهر',key:'period_month'},{label:'الطريقة',key:'method'}]},
-            target:{rows:snap_units,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]}
+            target:{rows:snap_units,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'الإيجار',key:'monthly_rent'}]},
+            vacant:{rows:_auditData.vacantActualRows||[],cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'آخر مستأجر',key:'lastTenant'},{label:'شاغرة من',key:'vacantFrom'},{label:'أيام',key:'daysVacant'},{label:'إيجار ضائع',key:'lostRent'}]}
           };
           window._ledgerDetail=function(key){ var d=window._ledgerDetailData[key]; if(!d) return; var t='<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse"><thead><tr style="background:#1a3a6a">'+d.cols.map(function(c){ return '<th style="padding:5px 8px;color:#fff;text-align:right;font-size:.7rem">'+c.label+'</th>'; }).join('')+'</tr></thead><tbody>'; d.rows.forEach(function(r,i){ t+='<tr style="background:'+(i%2?'#f9f9f9':'#fff')+'">'+d.cols.map(function(c){ return '<td style="padding:5px 8px;border:1px solid #eee;font-size:.7rem">'+esc2(String(r[c.key]===null||r[c.key]===undefined?'—':r[c.key]))+'</td>'; }).join('')+'</tr>'; }); t+='</tbody></table></div>'; document.getElementById('ledgerDetailArea').innerHTML=t; };
           window._auditLedgerPrint=function(){ var c=document.getElementById('ledgerContent'); if(!c) return; var w=window.open('','_blank','width=900,height=700'); w.document.write('<html dir="rtl"><head><meta charset="utf-8"><title>دفتر الشهر — '+monYM+'</title><style>body{font-family:Arial,sans-serif;direction:rtl;padding:24px;color:#111;background:#fff}table{width:100%;border-collapse:collapse}th{background:#1a3a6a;color:#fff;padding:6px 10px;text-align:right;font-size:11px}td{padding:6px 10px;border:1px solid #ddd;font-size:11px}@media print{button,span[onclick]{display:none}}</style></head><body>'+c.innerHTML+'</body></html>'); w.document.close(); w.focus(); setTimeout(function(){ w.print(); },400); };
