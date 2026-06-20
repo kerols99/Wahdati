@@ -1521,7 +1521,7 @@ async function loadDashboardAudit(monYM) {
       if(key === 'ledger') {
         area.innerHTML = '<div style="text-align:center;color:#666;padding:16px;font-size:.75rem"><span class="spin"></span> جاري تحميل دفتر الشهر...</div>';
         Promise.all([
-          sb.from('rent_payments').select('unit_id,apartment,room,tenant_name,amount,payment_date,payment_month,payment_method,notes').like('payment_month', monYM+'%'),
+          sb.from('rent_payments').select('unit_id,apartment,room,amount,payment_date,payment_month,payment_method,notes').like('payment_month', monYM+'%'),
           sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,deposit_received_date,status').gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',window.monthEnd(monYM)),
           sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,refund_amount,refund_date,status').gt('refund_amount',0).gte('refund_date',monYM+'-01').lte('refund_date',window.monthEnd(monYM)),
           sb.from('expenses').select('category,description,amount,period_month').eq('period_month',monYM+'-01'),
@@ -1606,7 +1606,7 @@ async function loadDashboardAudit(monYM) {
           area.innerHTML='<div style="border:2px solid #e0c860;border-radius:10px;overflow:hidden"><div style="background:#f9f5e0;padding:8px 12px;font-weight:700;font-size:.78rem;display:flex;justify-content:space-between;align-items:center"><span style="color:#7a6000">📒 دفتر الشهر — '+monYM+'</span><div style="display:flex;gap:6px"><button onclick="window._auditLedgerPrint()" style="background:#fff;border:1px solid #ddd;border-radius:6px;padding:3px 10px;font-size:.7rem;cursor:pointer">🖨️ طباعة</button><span onclick="document.getElementById(\'auditDetailArea\').innerHTML=\'\'" style="cursor:pointer;color:#999;font-weight:700;padding:2px 8px">✕</span></div></div><div style="padding:12px">'+lhtml+'</div></div>';
           // ledger detail
           window._ledgerDetailData={
-            pays:{rows:ledgerPays,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'تاريخ الدفع',key:'payment_date'},{label:'الطريقة',key:'payment_method'}]},
+            pays:{rows:ledgerPays,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المبلغ',key:'amount'},{label:'تاريخ الدفع',key:'payment_date'},{label:'شهر الدفع',key:'payment_month'},{label:'الطريقة',key:'payment_method'}]},
             deps:{rows:ledgerDeps,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المبلغ',key:'amount'},{label:'التاريخ',key:'deposit_received_date'}]},
             refs:{rows:ledgerRefunds,cols:[{label:'شقة',key:'apartment'},{label:'غرفة',key:'room'},{label:'المستأجر',key:'tenant_name'},{label:'المُرتجع',key:'refund_amount'},{label:'تاريخ الإرجاع',key:'refund_date'}]},
             exps:{rows:ledgerExp,cols:[{label:'الفئة',key:'category'},{label:'الوصف',key:'description'},{label:'المبلغ',key:'amount'}]},
