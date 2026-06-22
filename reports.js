@@ -2247,7 +2247,8 @@ function getInternalTransferRows(data) {
 
 function getNewTenantRows(data) {
   var monYM=data.monYM;
-  var tins=new Set((data.hist||[]).filter(function(h){ return h.snapshot_type==='internal_transfer_in' && getEffectiveStartMonth(h.start_date)===monYM; }).map(function(h){ return h.unit_id; }));
+  // استخدم internal_transfers.to_unit_id — أدق من unit_history.internal_transfer_in
+  var tins=new Set((data.transfers||[]).map(function(t){ return t.to_unit_id; }));
   var depMap={},depDateMap={};
   (data.deps||[]).forEach(function(d){ depMap[d.unit_id]=(depMap[d.unit_id]||0)+(Number(d.amount)||0); depDateMap[d.unit_id]=d.deposit_received_date; });
   var results=[],seen=new Set();
@@ -2720,9 +2721,8 @@ async function loadNewTenantsReport(btn) {
         .gte('new_start_date', monStart).lte('new_start_date', monEnd),
       sb.from('deposits').select('unit_id,apartment,room,tenant_name,amount,deposit_received_date')
         .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
-      sb.from('unit_history').select('unit_id,snapshot_type,start_date,end_date')
-        .eq('snapshot_type','internal_transfer_in')
-        .gte('start_date', monStart).lte('start_date', monEnd),
+      sb.from('internal_transfers').select('to_unit_id')
+        .gte('transfer_date', prevMonthLastDay).lte('transfer_date', monEnd),
       // مصدر ثالث: سجلات unit_history بتاريخ دخول يطابق getEffectiveStartMonth === monYM
       // (يشمل آخر يوم من الشهر السابق)
       sb.from('unit_history').select('unit_id,apartment,room,tenant_name,monthly_rent,first_month_rent,deposit,persons_count,phone,start_date,end_date,snapshot_type')
@@ -2732,7 +2732,7 @@ async function loadNewTenantsReport(btn) {
     var allUnits = unitsRes.data||[];
     var moves    = movesRes.data||[];
     var deps     = depsRes.data||[];
-    var transferIns = new Set((histRes.data||[]).map(function(h){ return h.unit_id; }));
+    var transferIns = new Set((histRes.data||[]).map(function(t){ return t.to_unit_id; }));
 
     var depMap = {};
     deps.forEach(function(d){
