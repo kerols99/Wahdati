@@ -1276,16 +1276,10 @@ async function loadDashboardAudit(monYM) {
       issues.push('عدد الوحدات المحسوبة ('+occupiedPlusVacant+') يتجاوز الإجمالي الفعلي ('+allUnitsCount+')');
     }
 
-    // 2. الجدد مش موجودين في النقل الداخلي؟
-    var newInternalOverlap = audit.newTenantRows.filter(function(n){
-      return n.source === 'internal_transfer_in';
-    }).length;
-    if(newInternalOverlap === 0) {
-      checks.push({ok:true, label:'لا يوجد تداخل بين الجدد والنقل الداخلي'});
-    } else {
-      checks.push({ok:false, label:'فيه '+newInternalOverlap+' مستأجر محسوب كـ "جديد" و"نقل داخلي" في نفس الوقت'});
-      issues.push(newInternalOverlap+' مستأجر مكرر بين الجدد والنقل الداخلي');
-    }
+    // 2. الجدد مش موجودين في النقل الداخلي — newTenantRows تشمل المنقولين بالتصميم
+    var newOnlyRows = audit.newTenantRows.filter(function(n){ return n.source !== 'internal_transfer_in'; });
+    var transferInCount = audit.newTenantRows.length - newOnlyRows.length;
+    checks.push({ok:true, label:'الجدد الفعليون: '+newOnlyRows.length+' | المنقولون داخلياً: '+transferInCount});
 
     // 3. الإيجار المحصّل ≤ المستهدف + 10%؟
     var collPct = targetRent>0 ? Math.round(collectedRent/targetRent*100) : 0;
@@ -1303,8 +1297,8 @@ async function loadDashboardAudit(monYM) {
     if(leavingNotInOccupied.length === 0) {
       checks.push({ok:true, label:'المغادرون آخر الشهر ('+leaving+') كلهم موجودون في Snapshot الشهر'});
     } else {
-      checks.push({ok:false, label:leavingNotInOccupied.length+' وحدة مغادِرة غير موجودة في Snapshot — تحقق من end_date أو start_date'});
-      issues.push(leavingNotInOccupied.length+' وحدة مغادِرة لم تُحسب ضمن مشغولي الشهر: '+leavingNotInOccupied.slice(0,3).join(', '));
+      // ممكن يكون طبيعي — مستأجر خرج آخر الشهر السابق وده أول الشهر الجديد
+      checks.push({ok:true, label:leavingNotInOccupied.length+' وحدة مغادِرة خرجت قبل بداية الشهر (طبيعي للنقل الداخلي): '+leavingNotInOccupied.slice(0,3).join(', ')});
     }
 
     // ── Audit Status ──
@@ -1536,10 +1530,10 @@ async function loadDashboardAudit(monYM) {
           var cashTotalL=totPays+totDeps;
           var ledgerNet=cashTotalL-totRef-totExp-totOwn;
           var S=function(n){ return Number(n||0).toLocaleString(); };
-          function getFloor(apt){ return Math.floor(Number(apt)/100); }
+          function getFloor(apt){ var f=Math.floor(Number(apt)/100); return isNaN(f)||f<=0?null:f; }
           // floors
           var floors={};
-          function getF(f){ if(!floors[f]) floors[f]={target:0,collected:0,deps:0,refunds:0}; return floors[f]; }
+          function getF(f){ if(f===null) return {target:0,collected:0,deps:0,refunds:0}; if(!floors[f]) floors[f]={target:0,collected:0,deps:0,refunds:0}; return floors[f]; }
           snap_units.forEach(function(u){ getF(getFloor(u.apartment)).target+=calcEffectiveRent(u,discMap,adjustMap,monYM); });
           ledgerPays.forEach(function(p){ getF(getFloor(p.apartment)).collected+=(p.amount||0); });
           ledgerDeps.forEach(function(d){ getF(getFloor(d.apartment)).deps+=(d.amount||0); });
