@@ -191,10 +191,13 @@ async function buildMonthSnapshot(monYM) {
 
     if(h.end_date && endDateYM < monYMcheck) return;
     if(h.end_date && endDateYM === monYMcheck && h.end_date.slice(8,10) === '01') return;
-    // internal_transfer_out: اعرضه بس لو حصل في آخر يوم من الشهر
-    // لو حصل قبل آخر يوم → المستأجر انتقل داخل الشهر → تجاهله في الوحدة القديمة
     if(h.snapshot_type === 'internal_transfer_out' && endDateYM === monYMcheck && h.end_date !== monEnd) return;
-    if(h.snapshot_type === 'internal_transfer_in') return;
+    if(h.snapshot_type === 'internal_transfer_in') {
+      // يدخل في Snapshot فقط لو له إقامة فعلية (start_date + end_date + إيجار > 0)
+      var hasRealStay = h.start_date && h.end_date && Number(h.monthly_rent||0) > 0
+        && h.start_date <= monEnd && h.end_date >= monStart;
+      if(!hasRealStay) return;
+    }
     if(h.snapshot_type === 'rent_change') return;
 
     if(!existingIds.has(h.unit_id)) {
