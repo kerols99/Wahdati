@@ -1849,9 +1849,22 @@ async function loadDiscReport(btn) {
   try {
     var today = (function(){ var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
 
-    var { data: discounts, error } = await sb.from('unit_discounts')
+    // فلتر الشهر لو موجود
+    var monEl = document.getElementById('rDisc-month');
+    var monYM = monEl && monEl.value ? monEl.value.slice(0,7) : null;
+    var monStart = monYM ? monYM+'-01' : null;
+    var monEnd   = monYM ? window.monthEnd(monYM) : null;
+
+    var query = sb.from('unit_discounts')
       .select('id,unit_id,apartment,room,discount_amount,start_date,end_date,reason')
       .order('apartment').order('room').order('start_date');
+
+    // لو في شهر مختار: جيب الخصومات اللي كانت نشطة فيه
+    if(monStart && monEnd) {
+      query = query.lte('start_date', monEnd).gte('end_date', monStart);
+    }
+
+    var { data: discounts, error } = await query;
     if(error) throw error;
 
     var discounts = discounts || [];
