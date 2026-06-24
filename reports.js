@@ -2267,7 +2267,7 @@ function getNewTenantRows(data) {
   var results=[],seen=new Set();
   function key(x){ return [String(x.apartment||''),String(x.room||''),String(x.tenant_name||x.tenant||'').trim().toLowerCase(),String(x.start_date||x.startDate||x.new_start_date||'').slice(0,10)].join('|'); }
   (data.units||[]).forEach(function(u){ if(getEffectiveStartMonth(u.start_date)!==monYM) return; var k=key(u); if(seen.has(k)) return; seen.add(k); results.push({apartment:u.apartment,room:u.room,tenant:u.tenant_name||'—',phone:u.phone||'—',startDate:u.start_date,personsCount:u.persons_count||0,monthlyRent:u.monthly_rent||0,firstMonthRent:u.first_month_rent||null,depositPaid:depMap[u.id]||0,depositDate:depDateMap[u.id]||'—',source:tins.has(u.id)?'internal_transfer_in':'new'}); });
-  (data.moves||[]).forEach(function(m){ if(getEffectiveStartMonth(m.new_start_date)!==monYM) return; var k=key(m); if(seen.has(k)) return; seen.add(k); results.push({apartment:m.apartment,room:m.room,tenant:m.tenant_name||'—',phone:m.phone||'—',startDate:m.new_start_date,personsCount:m.new_persons||0,monthlyRent:m.new_rent||0,firstMonthRent:null,depositPaid:m.new_deposit||depMap[m.unit_id]||0,depositDate:depDateMap[m.unit_id]||'—',source:tins.has(m.unit_id)?'internal_transfer_in':'new'}); });
+  (data.moves||[]).forEach(function(m){ if(getEffectiveStartMonth(m.new_start_date)!==monYM) return; var k=key(m); if(seen.has(k)) return; seen.add(k); results.push({apartment:m.apartment,room:m.room,tenant:m.tenant_name||'—',phone:m.phone||'—',startDate:m.new_start_date,personsCount:m.new_persons||0,monthlyRent:m.new_rent||0,firstMonthRent:null,depositPaid:depMap[m.unit_id]||m.new_deposit||0,depositDate:depDateMap[m.unit_id]||'—',source:tins.has(m.unit_id)?'internal_transfer_in':'new'}); });
   (data.histStart||[]).forEach(function(h){ if(getEffectiveStartMonth(h.start_date)!==monYM) return; if(!h.tenant_name||h.tenant_name==='—'||h.tenant_name==='——') return; if(!h.monthly_rent||h.monthly_rent<=0) return; if(h.snapshot_type==='rent_change'||h.snapshot_type==='internal_transfer_in'||h.snapshot_type==='internal_transfer_out') return; var k=key(h); if(seen.has(k)) return; seen.add(k); results.push({apartment:h.apartment,room:h.room,tenant:h.tenant_name||'—',phone:h.phone||'—',startDate:h.start_date,personsCount:h.persons_count||0,monthlyRent:h.monthly_rent||0,firstMonthRent:h.first_month_rent||null,depositPaid:h.deposit||depMap[h.unit_id]||0,depositDate:depDateMap[h.unit_id]||'—',source:'new'}); });
   results.sort(function(a,b){ var an=Number(a.apartment)||0,bn=Number(b.apartment)||0; if(an!==bn) return an-bn; return (Number(a.room)||0)-(Number(b.room)||0); });
   return results;
@@ -2748,8 +2748,11 @@ async function loadNewTenantsReport(btn) {
     var transferIns = new Set((histRes.data||[]).map(function(t){ return t.to_unit_id; }));
 
     var depMap = {};
+    var depMapByRoom = {};
     deps.forEach(function(d){
-      depMap[d.unit_id] = (depMap[d.unit_id]||0)+(Number(d.amount)||0);
+      if(d.unit_id) depMap[d.unit_id] = (depMap[d.unit_id]||0)+(Number(d.amount)||0);
+      var rk = String(d.apartment||'')+'-'+String(d.room||'');
+      depMapByRoom[rk] = (depMapByRoom[rk]||0)+(Number(d.amount)||0);
     });
     var depDateMap = {};
     deps.forEach(function(d){ depDateMap[d.unit_id] = d.deposit_received_date; });
@@ -2782,7 +2785,7 @@ async function loadNewTenantsReport(btn) {
         personsCount:   u.persons_count || 0,
         monthlyRent:    u.monthly_rent || 0,
         firstMonthRent: u.first_month_rent || null,
-        depositPaid:    depMap[u.id] || 0,
+        depositPaid:    depMap[u.id] || depMapByRoom[String(u.apartment)+'-'+String(u.room)] || 0,
         depositDate:    depDateMap[u.id] || '—',
         source:         transferIns.has(u.id) ? 'internal_transfer_in' : 'new'
       });
@@ -2803,7 +2806,7 @@ async function loadNewTenantsReport(btn) {
         personsCount:   m.new_persons || 0,
         monthlyRent:    m.new_rent || 0,
         firstMonthRent: null,
-        depositPaid:    m.new_deposit || depMap[m.unit_id] || 0,
+        depositPaid:    depMap[m.unit_id] || depMapByRoom[String(m.apartment)+'-'+String(m.room)] || m.new_deposit || 0,
         depositDate:    depDateMap[m.unit_id] || '—',
         source:         transferIns.has(m.unit_id) ? 'internal_transfer_in' : 'new'
       });
