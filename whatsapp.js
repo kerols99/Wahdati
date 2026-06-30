@@ -99,6 +99,42 @@ function loadWATemplatesIntoSettings() {
 }
 
 window.saveWATemplates = saveWATemplates;
+
+// ── إعادة إرسال إيصال موجود عبر واتساب ──
+async function resendReceiptWA(r) {
+  try {
+    var { data: unit } = await sb.from('units')
+      .select('phone,phone2,tenant_name,tenant_name2,language')
+      .eq('apartment', r.apartment).eq('room', r.room).single();
+
+    var phone = unit ? (unit.phone || unit.phone2 || '') : '';
+    phone = (phone||'').replace(/\D/g,'');
+    if(phone.startsWith('0')) phone = '971'+phone.slice(1);
+
+    if(!phone) {
+      toast(LANG==='ar'?'لا يوجد رقم هاتف لهذه الوحدة':'No phone number for this unit','err');
+      return;
+    }
+
+    var isAR = (unit && unit.language==='ar') || r.lang==='ar' || r.lang!=='en';
+    var msgLang = isAR ? 'ar' : 'en';
+    var monthNames   = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    var monthNamesEN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var pm = (r.payment_month||'').slice(0,7);
+    var pmYear  = pm ? Number(pm.slice(0,4)) : new Date().getFullYear();
+    var pmMonth = pm ? Number(pm.slice(5,7))-1 : new Date().getMonth();
+    var monthLabel = isAR ? monthNames[pmMonth] : monthNamesEN[pmMonth];
+
+    var tenantName = r.tenant_name || (unit && unit.tenant_name) || (isAR?'المستأجر':'Tenant');
+    var msg = buildWAMsg(msgLang, tenantName, r.apartment, r.room, monthLabel, pmYear, r.amount);
+    msg += '\n\n'+(isAR?'رقم الإيصال':'Receipt No')+': '+r.receipt_no;
+
+    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');
+  } catch(e) {
+    toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message, 'err');
+  }
+}
+window.resendReceiptWA = resendReceiptWA;
 window.resetWATemplates = resetWATemplates;
 window.loadWATemplatesIntoSettings = loadWATemplatesIntoSettings;
 window.buildWAMsg = buildWAMsg;

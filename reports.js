@@ -1810,10 +1810,14 @@ async function searchReceipts(q) {
         .limit(50);
 
       // بحث ذكي حسب نوع الإدخال
+      var aptRoomMatch = q.match(/^(\d{2,4})[\s\-\/]+(\d{1,2})$/);
       if(q.startsWith('W-') || q.startsWith('w-')) {
         query = query.ilike('receipt_no', q+'%');
+      } else if(aptRoomMatch) {
+        // بحث بصيغة "شقة-غرفة" مثل 101-8 أو 101 8
+        query = query.eq('apartment', aptRoomMatch[1]).eq('room', aptRoomMatch[2]);
       } else if(/^\d+$/.test(q) && q.length <= 4) {
-        // رقم شقة أو غرفة
+        // رقم شقة أو غرفة لوحده
         query = query.or('apartment.eq.'+q+',room.eq.'+q);
       } else {
         // اسم مستأجر
@@ -1835,7 +1839,8 @@ async function searchReceipts(q) {
         + data.map(function(r) {
             var isEn = r.lang === 'en';
             var meth = isEn ? (r.payment_method||'') : (methAr[r.payment_method] || r.payment_method || '');
-            return '<div style="background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:8px">'              +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'                +'<span style="font-family:monospace;font-size:.82rem;font-weight:700;color:var(--accent);background:var(--accent-glow);padding:2px 8px;border-radius:6px">'+esc(r.receipt_no)+'</span>'                +'<span style="font-size:1rem;font-weight:800;color:var(--green)">'+Number(r.amount||0).toLocaleString()+' AED</span>'              +'</div>'              +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:.75rem">'                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الشقة / الغرفة':'Apt / Room')+'</span><br><b>'+esc(r.apartment)+' — '+esc(r.room)+'</b></div>'                +(r.tenant_name?'<div><span style="color:var(--muted)">'+(LANG==='ar'?'المستأجر':'Tenant')+'</span><br><b>'+esc(r.tenant_name)+'</b></div>':'')                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الشهر':'Month')+'</span><br><b>'+esc(r.payment_month||'')+'</b></div>'                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'التاريخ':'Date')+'</span><br><b>'+(r.payment_date||'').slice(0,10)+'</b></div>'                +(meth?'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الطريقة':'Method')+'</span><br><b>'+esc(meth)+'</b></div>':'')              +'</div>'              +'</div>';
+            var rJson = esc(JSON.stringify(r)).replace(/'/g,'&#39;');
+            return '<div style="background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:13px 14px;margin-bottom:8px">'              +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'                +'<span style="font-family:monospace;font-size:.82rem;font-weight:700;color:var(--accent);background:var(--accent-glow);padding:2px 8px;border-radius:6px">'+esc(r.receipt_no)+'</span>'                +'<span style="font-size:1rem;font-weight:800;color:var(--green)">'+Number(r.amount||0).toLocaleString()+' AED</span>'              +'</div>'              +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:.75rem">'                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الشقة / الغرفة':'Apt / Room')+'</span><br><b>'+esc(r.apartment)+' — '+esc(r.room)+'</b></div>'                +(r.tenant_name?'<div><span style="color:var(--muted)">'+(LANG==='ar'?'المستأجر':'Tenant')+'</span><br><b>'+esc(r.tenant_name)+'</b></div>':'')                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الشهر':'Month')+'</span><br><b>'+esc(r.payment_month||'')+'</b></div>'                +'<div><span style="color:var(--muted)">'+(LANG==='ar'?'التاريخ':'Date')+'</span><br><b>'+(r.payment_date||'').slice(0,10)+'</b></div>'                +(meth?'<div><span style="color:var(--muted)">'+(LANG==='ar'?'الطريقة':'Method')+'</span><br><b>'+esc(meth)+'</b></div>':'')              +'</div>'              +'<button onclick=\'resendReceiptWA(JSON.parse(this.dataset.r))\' data-r="'+rJson+'" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;background:#25D366;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:.78rem;cursor:pointer">💬 '+(LANG==='ar'?'إعادة إرسال عبر واتساب':'Resend via WhatsApp')+'</button>'              +'</div>';
           }).join('');
 
     } catch(e) {
@@ -2928,7 +2933,7 @@ async function loadNewTenantsReport(btn) {
 function exportVacantActualPDF() {
   var results = window._vacantActualResults || [];
   var monYM = window._vacantActualMonth || '';
-  if(!newOnly.length) { toast('لا بيانات للطباعة','err'); return; }
+  if(!results.length) { toast('لا بيانات للطباعة','err'); return; }
   var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
   var totalLostRent = results.reduce(function(s,r){ return s+r.lostRent; },0);
 
@@ -2951,7 +2956,7 @@ function exportVacantActualPDF() {
     +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
     +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
-    +'<div style="background:#ffeaea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#c0392b">'+newOnly.length+'</div><div style="font-size:10px;color:#555">وحدة شاغرة فعلياً</div></div>'
+    +'<div style="background:#ffeaea;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#c0392b">'+results.length+'</div><div style="font-size:10px;color:#555">وحدة شاغرة فعلياً</div></div>'
     +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b07400">'+totalLostRent.toLocaleString()+'</div><div style="font-size:10px;color:#555">إيجار ضائع (AED)</div></div>'
     +'</div>'
     +'<table style="width:100%;border-collapse:collapse">'
@@ -2974,9 +2979,9 @@ function exportVacantActualPDF() {
 function exportEndOfMonthPDF() {
   var results = window._endOfMonthResults || [];
   var monYM = window._endOfMonthMonth || '';
-  if(!newOnly.length) { toast('لا بيانات للطباعة','err'); return; }
+  if(!results.length) { toast('لا بيانات للطباعة','err'); return; }
   var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-  var totalRent = newOnly.reduce(function(s,r){ return s+r.rent; },0);
+  var totalRent = results.reduce(function(s,r){ return s+r.rent; },0);
 
   var rows = results.map(function(r){
     return '<tr>'
@@ -2997,7 +3002,7 @@ function exportEndOfMonthPDF() {
     +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
     +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'
-    +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#b07400">'+newOnly.length+'</div><div style="font-size:10px;color:#555">وحدة ستصبح متاحة</div></div>'
+    +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#b07400">'+results.length+'</div><div style="font-size:10px;color:#555">وحدة ستصبح متاحة</div></div>'
     +'<div style="background:#eaf2ff;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a3a6a">'+totalRent.toLocaleString()+'</div><div style="font-size:10px;color:#555">إجمالي الإيجار (AED)</div></div>'
     +'</div>'
     +'<table style="width:100%;border-collapse:collapse">'
@@ -3021,7 +3026,7 @@ function exportEndOfMonthPDF() {
 function exportInternalTransfersPDF() {
   var results = window._internalTransfersResults || [];
   var monYM = window._internalTransfersMonth || '';
-  if(!newOnly.length) { toast('لا بيانات للطباعة','err'); return; }
+  if(!results.length) { toast('لا بيانات للطباعة','err'); return; }
   var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
 
   var rows = results.map(function(r){
@@ -3043,7 +3048,7 @@ function exportInternalTransfersPDF() {
     +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
     +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
     +'<div style="background:#eaf2ff;border-radius:8px;padding:10px;text-align:center;margin-bottom:16px;width:160px">'
-    +'<div style="font-size:20px;font-weight:800;color:#1a3a6a">'+newOnly.length+'</div><div style="font-size:10px;color:#555">عملية نقل داخلي</div></div>'
+    +'<div style="font-size:20px;font-weight:800;color:#1a3a6a">'+results.length+'</div><div style="font-size:10px;color:#555">عملية نقل داخلي</div></div>'
     +'<table style="width:100%;border-collapse:collapse">'
     +'<thead><tr style="background:#1a3a6a;color:#fff">'
     +'<th style="padding:7px 8px;text-align:right;font-size:11px">المستأجر</th>'
@@ -3060,10 +3065,10 @@ function exportInternalTransfersPDF() {
 function exportNewTenantsPDF() {
   var results = window._newTenantsResults || [];
   var monYM = window._newTenantsMonth || '';
-  if(!newOnly.length) { toast('لا بيانات للطباعة','err'); return; }
+  if(!results.length) { toast('لا بيانات للطباعة','err'); return; }
   var esc = function(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
-  var totalRent = newOnly.reduce(function(s,r){ return s+(r.firstMonthRent||r.monthlyRent); },0);
-  var totalDeposits = newOnly.reduce(function(s,r){ return s+r.depositPaid; },0);
+  var totalRent = results.reduce(function(s,r){ return s+(r.firstMonthRent||r.monthlyRent); },0);
+  var totalDeposits = results.reduce(function(s,r){ return s+r.depositPaid; },0);
 
   var rows = results.map(function(r){
     return '<tr>'
@@ -3086,7 +3091,7 @@ function exportNewTenantsPDF() {
     +'<div style="font-size:12px;color:#555;margin-top:3px">'+monYM+'</div></div>'
     +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div></div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'
-    +'<div style="background:#eafaf0;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#1a7a4a">'+newOnly.length+'</div><div style="font-size:10px;color:#555">مستأجر جديد</div></div>'
+    +'<div style="background:#eafaf0;border-radius:8px;padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:#1a7a4a">'+results.length+'</div><div style="font-size:10px;color:#555">مستأجر جديد</div></div>'
     +'<div style="background:#eaf2ff;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a3a6a">'+totalRent.toLocaleString()+'</div><div style="font-size:10px;color:#555">إيجار شهر الدخول</div></div>'
     +'<div style="background:#fff8e1;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#b07400">'+totalDeposits.toLocaleString()+'</div><div style="font-size:10px;color:#555">تأمينات محصّلة</div></div>'
     +'</div>'
