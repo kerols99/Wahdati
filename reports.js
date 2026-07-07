@@ -1612,33 +1612,84 @@ async function exportMonthlyExcel(monYM) {
     (pays||[]).forEach(function(p){ paidMap[p.unit_id]=(paidMap[p.unit_id]||0)+(p.amount||0); });
     (deps||[]).forEach(function(d){ depMap[d.unit_id]=(depMap[d.unit_id]||0)+(d.amount||0); });
 
-    // ترتيب الوحدات بالشقة ثم الغرفة
     units.sort(function(a,b){ var x=Number(a.apartment)-Number(b.apartment); return x||Number(a.room)-Number(b.room); });
 
-    var rows = [['شقة','غرفة','المستأجر','الإيجار الفعلي','تأمين','مدفوع','متبقي','الحالة']];
+    // تجميع بالشقق
+    var aptGroups = {};
     units.forEach(function(u){
-      var eff = calcEffectiveRent(u, discMap, adjustMap, monYM);
-      var paid = paidMap[u.id]||0;
-      var dep  = depMap[u.id]||0;
-      var rem  = eff - paid;
-      var st   = paid>=eff&&eff>0?'✅':paid>0?'⚠️':'❌';
-      rows.push([u.apartment, u.room, u.tenant_name||'—', eff, dep||'', paid, rem, st]);
+      var apt = String(u.apartment);
+      if(!aptGroups[apt]) aptGroups[apt] = [];
+      aptGroups[apt].push(u);
     });
 
-    // ملخص
-    var totalEff  = units.reduce(function(s,u){ return s+calcEffectiveRent(u,discMap,adjustMap,monYM); },0);
-    var totalPaid = (pays||[]).reduce(function(s,p){ return s+(p.amount||0); },0);
-    var totalDep  = (deps||[]).reduce(function(s,d){ return s+(d.amount||0); },0);
+    var rows = [];
+    // عنوان
+    rows.push(['تقرير الاستحقاق — '+monYM]);
     rows.push([]);
-    rows.push(['الإجمالي','','',totalEff,'',totalPaid,totalEff-totalPaid,'']);
-    rows.push(['تأمينات محصّلة','','','','',totalDep,'','']);
+    rows.push(['شقة','غرفة','المستأجر','الإيجار الفعلي','تأمين','مدفوع','متبقي','الحالة']);
+
+    var grandTotal = {eff:0, dep:0, paid:0, rem:0};
+    var floorTotals = {};
+    var prevFloor = null;
+
+    Object.keys(aptGroups).sort(function(a,b){ return Number(a)-Number(b); }).forEach(function(apt){
+      var floor = Math.floor(Number(apt)/100);
+      var aptUnits = aptGroups[apt];
+      var aptTotal = {eff:0, dep:0, paid:0, rem:0};
+
+      // فاصل دور جديد
+      if(floor !== prevFloor) {
+        if(prevFloor !== null) {
+          var ft = floorTotals[prevFloor];
+          rows.push(['إجمالي الدور '+prevFloor,'','',ft.eff,ft.dep,ft.paid,ft.rem,'']);
+          rows.push([]);
+        }
+        rows.push(['═══ الدور '+floor+' ═══']);
+        floorTotals[floor] = {eff:0, dep:0, paid:0, rem:0};
+        prevFloor = floor;
+      }
+
+      // صفوف الشقة
+      aptUnits.forEach(function(u){
+        var eff  = calcEffectiveRent(u, discMap, adjustMap, monYM);
+        var paid = paidMap[u.id]||0;
+        var dep  = depMap[u.id]||0;
+        var rem  = eff - paid;
+        var st   = paid>=eff&&eff>0?'✅':paid>0?'⚠️':'❌';
+        rows.push([apt, u.room, u.tenant_name||'—', eff, dep||0, paid, rem, st]);
+        aptTotal.eff+=eff; aptTotal.dep+=dep; aptTotal.paid+=paid; aptTotal.rem+=rem;
+      });
+
+      // إجمالي الشقة
+      rows.push(['إجمالي شقة '+apt,'','',aptTotal.eff,aptTotal.dep,aptTotal.paid,aptTotal.rem,'']);
+      rows.push([]);
+
+      // تراكم الدور
+      floorTotals[floor].eff+=aptTotal.eff;
+      floorTotals[floor].dep+=aptTotal.dep;
+      floorTotals[floor].paid+=aptTotal.paid;
+      floorTotals[floor].rem+=aptTotal.rem;
+
+      // تراكم الإجمالي
+      grandTotal.eff+=aptTotal.eff; grandTotal.dep+=aptTotal.dep;
+      grandTotal.paid+=aptTotal.paid; grandTotal.rem+=aptTotal.rem;
+    });
+
+    // إجمالي آخر دور
+    if(prevFloor !== null) {
+      var ft = floorTotals[prevFloor];
+      rows.push(['إجمالي الدور '+prevFloor,'','',ft.eff,ft.dep,ft.paid,ft.rem,'']);
+      rows.push([]);
+    }
+
+    // الإجمالي الكلي
+    rows.push(['══ الإجمالي الكلي ══','','',grandTotal.eff,grandTotal.dep,grandTotal.paid,grandTotal.rem,'']);
 
     var ws = XLSX.utils.aoa_to_sheet(rows);
-    // عرض الأعمدة
-    ws['!cols'] = [{wch:8},{wch:6},{wch:20},{wch:12},{wch:10},{wch:12},{wch:10},{wch:6}];
+    ws['!cols'] = [{wch:20},{wch:6},{wch:22},{wch:14},{wch:10},{wch:12},{wch:10},{wch:6}];
     var wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, monYM);
-    XLSX.writeFile(wb, 'تقرير-الاستحقاق-'+monYM+'.xlsx');
+    XLSX.writeFile(wb, 'تقرير-'+monYM+'.xlsx');
     toast('✅ تم تصدير Excel','ok');
   } catch(e) {
     toast('خطأ: '+e.message,'err');
