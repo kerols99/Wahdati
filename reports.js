@@ -2,24 +2,52 @@
 // PRINT HELPER — يفتح نافذة طباعة مستقلة
 // ══════════════════════════════════════════════════════
 function openPrintWindow(htmlContent) {
-  // حاول window.open أولاً
+  // على الموبايل: استخدم iframe مخفي لإطلاق الطباعة مباشرة
   try {
-    var w = window.open('', '_blank');
-    if(w) {
-      w.document.open();
-      w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8">'
-        +'<style>*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px;background:#fff}table{width:100%;border-collapse:collapse;margin-bottom:12px}tr{page-break-inside:avoid}thead{display:table-header-group}tfoot{display:table-footer-group}th{background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:11px;border:1px solid #999}td{padding:5px 8px;border:1px solid #ddd;text-align:right;font-size:11px}.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>'
-        +'</head><body>'+htmlContent+'</body></html>');
-      w.document.close();
-      setTimeout(function(){ try{ w.print(); }catch(_e){} }, 400);
-      return;
+    var iframe = document.getElementById('_printFrame');
+    if(!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = '_printFrame';
+      iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;visibility:hidden';
+      document.body.appendChild(iframe);
     }
-  } catch(_e){}
-  // fallback: استخدم pdfOverlay
+    var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iDoc.open();
+    iDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8">'
+      +'<style>'
+      +'*{box-sizing:border-box}'
+      +'@page{size:A4 landscape;margin:10mm}'
+      +'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:8px;color:#111;margin:0;font-size:10px;background:#fff}'
+      +'table{width:100%;border-collapse:collapse;margin-bottom:10px}'
+      +'tr{page-break-inside:avoid}'
+      +'thead{display:table-header-group}'
+      +'th{background:#1a3a6a;color:#fff;padding:5px 7px;text-align:right;font-size:10px;border:1px solid #999}'
+      +'td{padding:4px 7px;border:1px solid #ddd;text-align:right;font-size:10px}'
+      +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
+      +'</style>'
+      +'</head><body>'+htmlContent+'</body></html>');
+    iDoc.close();
+    setTimeout(function(){
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch(_e) {
+        // fallback: window.open
+        var w = window.open('','_blank');
+        if(w) {
+          w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}@page{size:A4 landscape;margin:10mm}body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:8px;color:#111;margin:0;font-size:10px;background:#fff}table{width:100%;border-collapse:collapse}tr{page-break-inside:avoid}thead{display:table-header-group}th{background:#1a3a6a;color:#fff;padding:5px 7px;text-align:right;font-size:10px;border:1px solid #999}td{padding:4px 7px;border:1px solid #ddd;text-align:right;font-size:10px}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'+htmlContent+'</body></html>');
+          w.document.close();
+          setTimeout(function(){ w.print(); }, 400);
+        }
+      }
+    }, 500);
+    return;
+  } catch(_e) {}
+  // last fallback: pdfOverlay
   var el = document.getElementById('pdf-content');
   if(el) el.innerHTML = htmlContent;
   var overlay = document.getElementById('pdfOverlay');
-  if(overlay) overlay.style.display='flex';
+  if(overlay) overlay.style.display='block';
 }
 window.openPrintWindow = openPrintWindow;
 
@@ -1304,20 +1332,36 @@ async function exportPDF(type, mon) {
         +'<td style="border:1px solid #ddd"></td></tr>';
     });
 
-    var _pdfStaticCSS = '<style>'      +'*{box-sizing:border-box}'      +'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:16px;color:#111;margin:0;font-size:12px;background:#fff}'      +'table{width:100%;border-collapse:collapse;page-break-inside:auto;margin-bottom:12px}'      +'tr{page-break-inside:avoid;page-break-after:auto}'      +'thead{display:table-header-group}'      +'tfoot{display:table-footer-group}'      +'th{background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:11px;border:1px solid #ccc}'      +'td{padding:5px 8px;border:1px solid #ddd;text-align:right;font-size:11px}'      +'.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}'      +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'      +'</style>';
-    document.getElementById('pdf-content').innerHTML =
-      '<div class="hd">'
+    var _pdfStaticCSS = '<style>'
+      +'*{box-sizing:border-box}'
+      +'@page{size:A4 landscape;margin:12mm}'
+      +'body{font-family:Arial,Helvetica,sans-serif;direction:rtl;padding:12px;color:#111;margin:0;font-size:11px;background:#fff}'
+      +'table{width:100%;border-collapse:collapse;page-break-inside:auto;margin-bottom:12px}'
+      +'tr{page-break-inside:avoid;page-break-after:auto}'
+      +'thead{display:table-header-group}'
+      +'tfoot{display:table-footer-group}'
+      +'th{background:#1a3a6a;color:#fff;padding:6px 8px;text-align:right;font-size:10px;border:1px solid #999}'
+      +'td{padding:5px 8px;border:1px solid #ddd;text-align:right;font-size:10px}'
+      +'.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #1a3a6a;padding-bottom:10px;margin-bottom:14px}'
+      +'@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
+      +'</style>';
     var pdfPct = totalRent>0?Math.round(totalRentColl/totalRent*100):0;
+    // ملخص كروت مثل تقرير الشاغر
+    var pdfSummaryCards = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
+      +'<div style="background:#e8f5ee;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a7a4a">'+totalRent.toLocaleString()+'</div><div style="font-size:9px;color:#555">الإيجار المستهدف (AED)</div></div>'
+      +'<div style="background:#e8f5ee;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a7a4a">'+totalRentColl.toLocaleString()+'</div><div style="font-size:9px;color:#555">محصّل (AED)</div></div>'
+      +'<div style="background:'+(totalRent-totalRentColl>0?'#ffeaea':'#e8f5ee')+';border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:'+(totalRent-totalRentColl>0?'#c0392b':'#1a7a4a')+'">'+(totalRent-totalRentColl).toLocaleString()+'</div><div style="font-size:9px;color:#555">متبقي (AED)</div></div>'
+      +'<div style="background:#e8eeff;border-radius:8px;padding:10px;text-align:center"><div style="font-size:16px;font-weight:800;color:#1a3a6a">'+pdfPct+'%</div><div style="font-size:9px;color:#555">نسبة التحصيل</div></div>'
+      +'</div>';
     document.getElementById('pdf-content').innerHTML =
-      '<div class="hd">'
-      +'<div>'
-      +'<div style="font-size:1.15rem;font-weight:700">Wahdati — تقرير الاستحقاق</div>'
-      +'<div style="font-size:.8rem;color:#555;margin-top:2px">'+mon+' · نسبة التحصيل: <b style="color:'+(pdfPct>=90?'#1a7a4a':pdfPct>=60?'#b07400':'#c0392b')+'">'+pdfPct+'%</b></div>'
+      '<div style="border-bottom:3px solid #1a3a6a;padding-bottom:12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start">'
+      +'<div><div style="font-size:18px;font-weight:800;color:#1a3a6a">Wahdati — تقرير الاستحقاق</div>'
+      +'<div style="font-size:12px;color:#555;margin-top:3px">'+mon+'</div></div>'
+      +'<div style="font-size:11px;color:#888">'+new Date().toLocaleDateString('ar-AE')+'</div>'
       +'</div>'
-      +'<div style="font-size:.75rem;color:#666">'+new Date().toLocaleDateString()+'</div>'
-      +'</div>'
+      +pdfSummaryCards
       +'<table style="width:100%;border-collapse:collapse;margin-bottom:16px">'
-      +'<thead><tr>'+TH('غرفة')+TH('المستأجر')+TH('الإيجار')+TH('تأمين')+TH('مدفوع')+TH('متبقي')+'<th style="padding:6px 8px;text-align:center;background:#f0f0f0;border:1px solid #ddd;font-size:11px">#</th></tr></thead>'
+      +'<thead><tr>'+TH('غرفة')+TH('المستأجر')+TH('الإيجار')+TH('تأمين')+TH('مدفوع')+TH('متبقي')+'<th style="padding:6px 8px;text-align:center;background:#1a3a6a;color:#fff;border:1px solid #999;font-size:10px">#</th></tr></thead>'
       +'<tbody>'+aptHTML+'</tbody>'
       +'</table>'
       +'<div style="border-top:2px solid #333;padding-top:12px;margin-top:4px">'
