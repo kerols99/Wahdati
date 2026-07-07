@@ -717,7 +717,7 @@ async function loadMonthly(btn) {
 
 
     window._lastPDFMon = mon;
-    html = '<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn bg" style="font-size:.78rem;flex:1;touch-action:manipulation" onclick="exportPDF(\'monthly\',window._lastPDFMon)">📄 PDF</button></div>' + html;
+    html = '<div style="display:flex;gap:8px;margin-bottom:12px"><button class="btn bg" style="font-size:.78rem;flex:1;touch-action:manipulation" onclick="exportPDF(\'monthly\',window._lastPDFMon)">📄 PDF</button><button class="btn" style="font-size:.78rem;flex:1;touch-action:manipulation;background:#1d6f42;color:#fff;border:none;border-radius:8px;padding:8px" onclick="exportMonthlyExcel(window._lastPDFMon)">📊 Excel</button></div>' + html;
     document.getElementById('rMonOut').innerHTML = html;
 
   } catch(e){ toast(e.message,'err'); console.error('loadMonthly:',e); }
@@ -1599,8 +1599,55 @@ async function exportCSV() {
   } catch(e){toast('خطأ: '+e.message,'err');}
 }
 
+async function exportMonthlyExcel(monYM) {
+  if(!monYM) { toast('اختر الشهر أولاً','err'); return; }
+  if(typeof XLSX === 'undefined') { toast('مكتبة Excel غير محملة','err'); return; }
+  try {
+    var snap = await buildMonthSnapshot(monYM);
+    var units = snap.units||[], discMap=snap.discMap||{}, adjustMap=snap.adjustMap||{};
+    var { data: pays } = await sb.from('rent_payments').select('unit_id,apartment,room,amount').like('payment_month', monYM+'%');
+    var { data: deps } = await sb.from('deposits').select('unit_id,amount').gte('deposit_received_date',monYM+'-01').lte('deposit_received_date',window.monthEnd(monYM));
+
+    var paidMap={}, depMap={};
+    (pays||[]).forEach(function(p){ paidMap[p.unit_id]=(paidMap[p.unit_id]||0)+(p.amount||0); });
+    (deps||[]).forEach(function(d){ depMap[d.unit_id]=(depMap[d.unit_id]||0)+(d.amount||0); });
+
+    // ترتيب الوحدات بالشقة ثم الغرفة
+    units.sort(function(a,b){ var x=Number(a.apartment)-Number(b.apartment); return x||Number(a.room)-Number(b.room); });
+
+    var rows = [['شقة','غرفة','المستأجر','الإيجار الفعلي','تأمين','مدفوع','متبقي','الحالة']];
+    units.forEach(function(u){
+      var eff = calcEffectiveRent(u, discMap, adjustMap, monYM);
+      var paid = paidMap[u.id]||0;
+      var dep  = depMap[u.id]||0;
+      var rem  = eff - paid;
+      var st   = paid>=eff&&eff>0?'✅':paid>0?'⚠️':'❌';
+      rows.push([u.apartment, u.room, u.tenant_name||'—', eff, dep||'', paid, rem, st]);
+    });
+
+    // ملخص
+    var totalEff  = units.reduce(function(s,u){ return s+calcEffectiveRent(u,discMap,adjustMap,monYM); },0);
+    var totalPaid = (pays||[]).reduce(function(s,p){ return s+(p.amount||0); },0);
+    var totalDep  = (deps||[]).reduce(function(s,d){ return s+(d.amount||0); },0);
+    rows.push([]);
+    rows.push(['الإجمالي','','',totalEff,'',totalPaid,totalEff-totalPaid,'']);
+    rows.push(['تأمينات محصّلة','','','','',totalDep,'','']);
+
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    // عرض الأعمدة
+    ws['!cols'] = [{wch:8},{wch:6},{wch:20},{wch:12},{wch:10},{wch:12},{wch:10},{wch:6}];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, monYM);
+    XLSX.writeFile(wb, 'تقرير-الاستحقاق-'+monYM+'.xlsx');
+    toast('✅ تم تصدير Excel','ok');
+  } catch(e) {
+    toast('خطأ: '+e.message,'err');
+    console.error('exportMonthlyExcel:', e);
+  }
+}
+window.exportMonthlyExcel = exportMonthlyExcel;
+
 async function exportXLSX() {
-  toast(LANG==='ar'?'جاري تحضير ملف Excel...':'Preparing Excel...','');
   try {
     var [unitsRes, paysRes, depsRes, expsRes, ownsRes] = await Promise.all([
       sb.from('units').select('*').order('apartment').order('room'),
