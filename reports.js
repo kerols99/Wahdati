@@ -1265,15 +1265,23 @@ async function exportPDF(type, mon) {
           var dep  = depMap[u.id]||0;
           var got=paidMap[String(u.id)]!==undefined?paidMap[String(u.id)]:(paidMapByRoom[String(u.apartment)+'-'+String(u.room)]||0);
           var _pdfRent = calcEffectiveRent(u, _pdfDiscMap, _pdfAdjustMap, monYM);
-          var rem  = Math.max(0, _pdfRent - got);
+          var rem  = _pdfRent - got;
           var st   = got>=_pdfRent&&_pdfRent>0?'✅':got>0?'⚠️':'❌';
+          // عرض الإيجار مع الخصم
+          var discAmt = _pdfDiscMap[u.id]||0;
+          var rentStr = discAmt>0
+            ? (u.monthly_rent+' <span style="color:#888;font-size:9px">-'+discAmt+'</span> '+_pdfRent)
+            : String(_pdfRent);
+          // المتبقي: صفر = —، سالب = زيادة ↪️، موجب = متبقي
+          var remDisplay = rem>0 ? String(rem) : rem<0 ? '+'+Math.abs(rem)+'↪️' : '—';
+          var remColor   = rem>0 ? '#c0392b' : rem<0 ? '#2456d3' : '#888';
           aptHTML += '<tr>'
             +TD(u.room)
             +TD(u.tenant_name||(u.tenant_name2?u.tenant_name2:'—'))
-            +TD(u.monthly_rent||0)
+            +'<td style="padding:5px 8px;text-align:right;border:1px solid #ddd;font-size:11px">'+rentStr+'</td>'
             +TD(dep>0?dep:'—', dep>0?'color:#2456d3;font-weight:700':'color:#888')
             +TD(got, got>0?'color:#1a7a4a;font-weight:700':'color:#c0392b')
-            +TD(rem, rem>0?'color:#c0392b;font-weight:700':'color:#1a7a4a')
+            +'<td style="padding:5px 8px;text-align:right;border:1px solid #ddd;font-size:11px;color:'+remColor+(rem>0?';font-weight:700':'')+'">'+remDisplay+'</td>'
             +'<td style="padding:5px 8px;text-align:center;border:1px solid #ddd;font-size:12px">'+st+'</td>'
             +'</tr>';
         });
