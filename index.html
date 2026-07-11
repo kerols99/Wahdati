@@ -433,6 +433,7 @@
 <button class="tab" data-tab-target="rInternalTransfers" id="rtab-it">🔄 نقل داخلي</button>
 <button class="tab" data-tab-target="rNewTenants" id="rtab-newt">🆕 مستأجرين جدد</button>
 <button class="tab" data-tab-target="rAccrualCash" id="rtab-accrualcash">📊 مقارنة الاستحقاق</button>
+<button class="tab" data-tab-target="rTenantStatement" id="rtab-stmt">🧾 كشف حساب</button>
 </div>
 <div class="tpanel" id="rDisc">
 <div style="background:var(--amber)12;border:1px solid var(--amber)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
@@ -488,6 +489,26 @@
 <button class="btn" style="flex:0 0 auto;font-size:.82rem;background:var(--panel2);border:1.5px solid var(--border);margin-bottom:4px;padding:0 14px" onclick="exportNewTenantsPDF()">📄 PDF</button>
 </div>
 <div id="rNewTenantsOut" style="margin-top:12px"></div>
+</div>
+
+<!-- كشف حساب مستأجر -->
+<div class="tpanel" id="rTenantStatement">
+<div style="background:var(--accent)12;border:1px solid var(--accent)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
+  🧾 <b style="color:var(--accent)">كشف حساب مستأجر</b> — سجل الدفعات والخصومات والحركة خلال فترة محددة
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+  <input class="inp" id="rStmt-apt" type="number" placeholder="الشقة" style="text-align:center"/>
+  <input class="inp" id="rStmt-room" type="number" placeholder="الغرفة" style="text-align:center"/>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+  <input class="inp" id="rStmt-from" type="month" title="من شهر"/>
+  <input class="inp" id="rStmt-to" type="month" title="إلى شهر"/>
+</div>
+<div style="display:flex;gap:6px">
+  <button class="btn bp" style="flex:1;font-size:.82rem" onclick="loadTenantStatement(this)">🧾 عرض كشف الحساب</button>
+  <button class="btn" style="flex:0 0 auto;font-size:.82rem;background:var(--panel2);border:1.5px solid var(--border);padding:0 14px" onclick="exportTenantStatementPDF()">📄 PDF</button>
+</div>
+<div id="rTenantStatementOut" style="margin-top:12px"></div>
 </div>
 <div class="tpanel" id="rAccrualCash">
 <div style="background:var(--accent)12;border:1px solid var(--accent)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
