@@ -962,6 +962,144 @@ window.openImgViewer = openImgViewer;
 
 window.loadHome=loadHome; window.loadUnits=loadUnits; window.renderUnits=renderUnits; window.setFilter=setFilter; window.filterUnits=filterUnits; window.openDrawer=openDrawer; window.drTouchStart=drTouchStart; window.drTouchMove=drTouchMove; window.drTouchEnd=drTouchEnd; window.closeDrawer=closeDrawer; window.editUnit=editUnit; window.confirmDel=confirmDel; window.deleteUnit=deleteUnit; window.saveUnit=saveUnit; window.clearUnit=clearUnit; window.calcTotalRent=calcTotalRent; window.openWelcomeFromUnit=openWelcomeFromUnit;
 
+// ══════════════════════════════════════════════════════
+// UNIT MAP — خريطة الوحدات
+// ══════════════════════════════════════════════════════
+var _mapMode = false;
+
+function toggleUnitMap(btn) {
+  _mapMode = !_mapMode;
+  var listEl = document.getElementById('unitList');
+  var mapEl  = document.getElementById('unitMap');
+  if(!listEl || !mapEl) return;
+  if(_mapMode) {
+    listEl.style.display = 'none';
+    mapEl.style.display  = 'block';
+    btn.style.background = 'var(--accent)';
+    btn.style.color      = '#fff';
+    btn.style.borderColor = 'var(--accent)';
+    renderUnitMap();
+  } else {
+    listEl.style.display = 'block';
+    mapEl.style.display  = 'none';
+    btn.style.background = 'var(--surf2)';
+    btn.style.color      = 'var(--muted)';
+    btn.style.borderColor = 'var(--border)';
+  }
+}
+window.toggleUnitMap = toggleUnitMap;
+
+function renderUnitMap() {
+  var mapEl = document.getElementById('unitMap');
+  if(!mapEl) return;
+  var units = MO || [];
+  if(!units.length) { mapEl.innerHTML = '<p style="color:var(--muted);text-align:center;padding:24px">لا توجد وحدات</p>'; return; }
+
+  var ym = window.getActiveMonth ? getActiveMonth() : '';
+  var paidMap = _paidMapCache || {};
+
+  // Group by floor → apartment
+  var floors = {};
+  units.forEach(function(u) {
+    var apt = String(u.apartment||'');
+    var floor = Math.floor(Number(apt) / 100);
+    if(!floors[floor]) floors[floor] = {};
+    if(!floors[floor][apt]) floors[floor][apt] = [];
+    floors[floor][apt].push(u);
+  });
+
+  // Determine room status
+  function roomState(u) {
+    if(u.is_vacant || u.unit_status === 'vacant') return 'vacant';
+    if(u.unit_status === 'leaving') return 'leaving';
+    var rent = window.calcEffectiveRent ? calcEffectiveRent(u, window._discMap||{}, window._adjustMap||{}, ym) : (u.monthly_rent||0);
+    var paid = paidMap[u.id] || 0;
+    if(rent <= 0) return 'vacant';
+    if(paid >= rent) return 'paid';
+    if(paid > 0) return 'partial';
+    return 'unpaid';
+  }
+
+  var stateStyle = {
+    paid:    'background:var(--green-bg);color:var(--green);border:1.5px solid rgba(48,209,88,.25)',
+    partial: 'background:var(--amber-bg);color:var(--amber);border:1.5px solid rgba(255,214,10,.25)',
+    unpaid:  'background:var(--red-bg);color:var(--red);border:1.5px solid rgba(255,69,58,.25)',
+    vacant:  'background:var(--surf2);color:var(--muted);border:1.5px solid var(--border)',
+    leaving: 'background:var(--amber-bg);color:var(--amber);border:1.5px solid rgba(255,214,10,.35)',
+  };
+
+  // Stats
+  var stats = {paid:0, partial:0, unpaid:0, vacant:0};
+  units.forEach(function(u){ var s=roomState(u); if(stats[s]!==undefined) stats[s]++; });
+
+  var html = '';
+
+  // Legend + stats strip
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px">'
+    + '<div style="text-align:center;padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:var(--surf)">'
+    +   '<div style="font-size:18px;font-weight:700;color:var(--green)">'+stats.paid+'</div>'
+    +   '<div style="font-size:9px;font-weight:600;color:var(--green);margin-top:2px">✅ مسدّد</div>'
+    + '</div>'
+    + '<div style="text-align:center;padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:var(--surf)">'
+    +   '<div style="font-size:18px;font-weight:700;color:var(--amber)">'+stats.partial+'</div>'
+    +   '<div style="font-size:9px;font-weight:600;color:var(--amber);margin-top:2px">⚠️ جزئي</div>'
+    + '</div>'
+    + '<div style="text-align:center;padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:var(--surf)">'
+    +   '<div style="font-size:18px;font-weight:700;color:var(--red)">'+stats.unpaid+'</div>'
+    +   '<div style="font-size:9px;font-weight:600;color:var(--red);margin-top:2px">❌ لم يدفع</div>'
+    + '</div>'
+    + '<div style="text-align:center;padding:10px 6px;border:1px solid var(--border);border-radius:10px;background:var(--surf)">'
+    +   '<div style="font-size:18px;font-weight:700;color:var(--muted)">'+stats.vacant+'</div>'
+    +   '<div style="font-size:9px;font-weight:600;color:var(--muted);margin-top:2px">🔵 شاغر</div>'
+    + '</div>'
+    + '</div>';
+
+  // Floor blocks
+  Object.keys(floors).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(floor) {
+    var apts = floors[floor];
+    var aptCount = Object.keys(apts).length;
+    var roomCount = Object.values(apts).reduce(function(s,r){return s+r.length;},0);
+
+    html += '<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:10px">'
+      // floor header
+      + '<div style="background:var(--surf2);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border)">'
+      +   '<span style="font-size:14px;font-weight:700;color:var(--text)">الدور '+floor+'</span>'
+      +   '<span style="font-size:11px;color:var(--muted)">'+aptCount+' شقة · '+roomCount+' غرفة</span>'
+      + '</div>';
+
+    // Apartments
+    Object.keys(apts).sort(function(a,b){return Number(a)-Number(b);}).forEach(function(apt, aptIdx) {
+      var rooms = apts[apt];
+      var isLast = aptIdx === Object.keys(apts).length - 1;
+
+      html += '<div style="padding:12px 14px'+(isLast?'':';border-bottom:1px solid var(--border-soft, var(--border))')+'">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        +   '<span style="font-size:12px;font-weight:700;color:var(--text)">شقة '+apt+'</span>'
+        +   '<span style="font-size:10px;color:var(--muted)">'+rooms.length+' غرفة</span>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:5px">';
+
+      rooms.sort(function(a,b){return Number(a.room)-Number(b.room);}).forEach(function(u) {
+        var state = roomState(u);
+        var style = stateStyle[state] || stateStyle.vacant;
+        var name  = (u.tenant_name||'').split(' ')[0] || '—';
+        html += '<div onclick="openDrawer(\''+u.id+'\')" style="'+style+';border-radius:9px;padding:7px 4px;text-align:center;cursor:pointer;transition:transform .1s" '
+          + 'onmouseenter="this.style.transform=\'scale(1.06)\'" onmouseleave="this.style.transform=\'scale(1)\'">'
+          +   '<div style="font-size:11px;font-weight:700;margin-bottom:2px">'+u.room+'</div>'
+          +   '<div style="font-size:9px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+name+'</div>'
+          + '</div>';
+      });
+
+      html += '</div></div>';
+    });
+
+    html += '</div>';
+  });
+
+  mapEl.innerHTML = html;
+}
+window.renderUnitMap = renderUnitMap;
+
 function copyPhone(num) {
   navigator.clipboard.writeText(num).then(function(){
     toast('✅ تم نسخ الرقم', 'ok');
