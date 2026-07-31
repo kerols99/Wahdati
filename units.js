@@ -963,6 +963,79 @@ window.openImgViewer = openImgViewer;
 window.loadHome=loadHome; window.loadUnits=loadUnits; window.renderUnits=renderUnits; window.setFilter=setFilter; window.filterUnits=filterUnits; window.openDrawer=openDrawer; window.drTouchStart=drTouchStart; window.drTouchMove=drTouchMove; window.drTouchEnd=drTouchEnd; window.closeDrawer=closeDrawer; window.editUnit=editUnit; window.confirmDel=confirmDel; window.deleteUnit=deleteUnit; window.saveUnit=saveUnit; window.clearUnit=clearUnit; window.calcTotalRent=calcTotalRent; window.openWelcomeFromUnit=openWelcomeFromUnit;
 
 // ══════════════════════════════════════════════════════
+// إرجاع مستأجر سابق
+// ══════════════════════════════════════════════════════
+async function restorePrevTenant(data) {
+  if(!data || typeof data !== 'object') { toast('خطأ في البيانات','err'); return; }
+  var unitId = data.unitId;
+  var name   = data.n || data.name || '';
+
+  // تأكيد
+  if(!confirm('إرجاع المستأجر "'+name+'" لهذه الوحدة؟\nسيتم تحديث بيانات الوحدة بنفس بياناته السابقة.')) return;
+
+  try {
+    var unit = MO.find(function(u){ return u.id===unitId; });
+    if(!unit) {
+      var { data: ud } = await sb.from('units').select('*').eq('id',unitId).single();
+      unit = ud;
+    }
+    if(!unit) { toast('الوحدة غير موجودة','err'); return; }
+
+    // حفظ المستأجر الحالي في unit_history لو موجود
+    if(unit.tenant_name) {
+      await sb.from('unit_history').insert({
+        unit_id:       unitId,
+        apartment:     unit.apartment,
+        room:          unit.room,
+        tenant_name:   unit.tenant_name,
+        tenant_name2:  unit.tenant_name2||null,
+        phone:         unit.phone||null,
+        phone2:        unit.phone2||null,
+        monthly_rent:  unit.monthly_rent||0,
+        deposit:       unit.deposit||0,
+        persons_count: unit.persons_count||1,
+        language:      unit.language||'ar',
+        start_date:    unit.start_date||null,
+        end_date:      new Date().toISOString().slice(0,10),
+        snapshot_type: 'departure',
+        notes:         'تم الاستبدال بمستأجر سابق'
+      });
+    }
+
+    // تحديث الوحدة ببيانات المستأجر السابق
+    var today = new Date().toISOString().slice(0,10);
+    var { error } = await sb.from('units').update({
+      tenant_name:   data.n || data.name || null,
+      tenant_name2:  data.n2 || data.name2 || null,
+      phone:         data.ph || data.phone || null,
+      phone2:        data.ph2 || data.phone2 || null,
+      monthly_rent:  data.r || data.rent || 0,
+      deposit:       data.d || data.deposit || 0,
+      persons_count: data.p || data.persons || 1,
+      language:      data.l || data.language || 'ar',
+      start_date:    today,
+      is_vacant:     false,
+      unit_status:   'occupied',
+      first_month_rent: null,
+      notes:         null
+    }).eq('id', unitId);
+
+    if(error) throw error;
+
+    toast('✅ تم إرجاع المستأجر بنجاح', 'ok');
+    closeDrawer();
+    await loadUnits();
+    // افتح الـ drawer تاني عشان يشوف التحديث
+    setTimeout(function(){ openDrawer(unitId); }, 300);
+
+  } catch(e) {
+    toast('خطأ: '+e.message, 'err');
+    console.error('restorePrevTenant:', e);
+  }
+}
+window.restorePrevTenant = restorePrevTenant;
+
+// ══════════════════════════════════════════════════════
 // UNIT MAP — خريطة الوحدات
 // ══════════════════════════════════════════════════════
 var _mapMode = false;

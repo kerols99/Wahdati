@@ -662,6 +662,9 @@ async function togglePayHistory(unitId) {
           + (h.deposit?'<span>🔒 '+h.deposit+' AED <span style="font-size:.6rem;color:var(--muted)">(مرجعي)</span></span>':'')
           + (h.persons_count?'<span>👤 '+h.persons_count+'</span>':'')
           + '</div>'
+          + '<div style="margin-top:6px">'
+          + '<button onclick="window._restoreH='+JSON.stringify({unitId:unitId,n:h.tenant_name||'',n2:h.tenant_name2||'',ph:h.phone||'',ph2:h.phone2||'',r:h.monthly_rent||0,d:h.deposit||0,p:h.persons_count||1,l:h.language||'ar'})+';restorePrevTenant(window._restoreH)" style="padding:6px 14px;background:var(--accent)22;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">↩️ إرجاع هذا المستأجر</button>'
+          + '</div>'
           + '</div>';
       });
       html += '<div style="height:1px;background:var(--border);margin:12px 0"></div>';
