@@ -554,6 +554,8 @@ var now = new Date();
     + '</div>'
     + '<button id="drawer-mark-depart-btn" style="width:100%;padding:11px;background:' + (scheduledDepart ? 'var(--amber)22' : 'var(--red)18') + ';border:1px solid ' + (scheduledDepart ? 'var(--amber)' : 'var(--red)') + ';border-radius:12px;color:' + (scheduledDepart ? 'var(--amber)' : 'var(--red)') + ';font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">📤 ' + (scheduledDepart ? (LANG==='ar'?'مغادرة مسجلة':'Scheduled departure') : (LANG==='ar'?'تسجيل مغادرة آخر الشهر':'Mark departure at month end')) + '</button>'
     + '<button id="drawer-contract-btn" style="width:100%;padding:11px;background:var(--accent)22;border:1px solid var(--accent);border-radius:12px;color:var(--accent);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px">📄 '+(LANG==='ar'?'إرسال العقد / PDF':'Contract / PDF')+'</button>'
+    + '<button id="drawer-daily-btn" style="width:100%;padding:11px;background:var(--purple)22;border:1px solid var(--purple);border-radius:12px;color:var(--purple);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px">🗓️ '+(LANG==='ar'?'إيجار يومي':'Daily Rental')+'</button>'
+    + '<div id="daily-rental-form" style="display:none"></div>'
     + '<button id="drawer-hist-btn" style="width:100%;padding:11px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer">📋 '+(LANG==='ar'?'سجل الدفعات':'Payment History')+'</button>'
     + '<div id="pay-history" style="display:none"></div>'
     + '<button id="drawer-qnote-btn" style="width:100%;padding:10px;margin-top:8px;background:var(--amber)15;border:1px solid var(--amber)44;border-radius:12px;color:var(--amber);font-family:var(--font);font-size:.78rem;font-weight:700;cursor:pointer;touch-action:manipulation">📝 '+(unit.notes?(LANG==='ar'?'تعديل الملاحظة':'Edit Note'):(LANG==='ar'?'إضافة ملاحظة':'Add Note'))+'</button>'
@@ -639,6 +641,9 @@ var now = new Date();
   var _aptLabel = (LANG==='ar'?'شقة':'Apt')+' '+_u.apartment+' — '+_u.room;
   if(window.injectProfileButtons) setTimeout(function(){ window.injectProfileButtons(_u.id, _aptLabel); }, 10);
   document.getElementById('drawer-contract-btn').onclick = function(){ openWelcomeFromUnit(_u); };
+
+  // ── إيجار يومي ──
+  document.getElementById('drawer-daily-btn').onclick = function(){ openDailyRentalForm(_u); };
   var markBtn = document.getElementById('drawer-mark-depart-btn');
   if(markBtn){ markBtn.onclick = async function(){
     if(scheduledDepart){ toast(t('alreadyMarkedDepart'),'err'); return; }
@@ -961,6 +966,129 @@ function openImgViewer(src) {
 window.openImgViewer = openImgViewer;
 
 window.loadHome=loadHome; window.loadUnits=loadUnits; window.renderUnits=renderUnits; window.setFilter=setFilter; window.filterUnits=filterUnits; window.openDrawer=openDrawer; window.drTouchStart=drTouchStart; window.drTouchMove=drTouchMove; window.drTouchEnd=drTouchEnd; window.closeDrawer=closeDrawer; window.editUnit=editUnit; window.confirmDel=confirmDel; window.deleteUnit=deleteUnit; window.saveUnit=saveUnit; window.clearUnit=clearUnit; window.calcTotalRent=calcTotalRent; window.openWelcomeFromUnit=openWelcomeFromUnit;
+
+// ══════════════════════════════════════════════════════
+// إيجار يومي
+// ══════════════════════════════════════════════════════
+function openDailyRentalForm(unit) {
+  var formEl = document.getElementById('daily-rental-form');
+  var btn    = document.getElementById('drawer-daily-btn');
+  if(!formEl) return;
+
+  if(formEl.style.display !== 'none') {
+    formEl.style.display = 'none';
+    btn.textContent = '🗓️ ' + (LANG==='ar'?'إيجار يومي':'Daily Rental');
+    return;
+  }
+
+  var today = new Date().toISOString().slice(0,10);
+  formEl.style.display = 'block';
+  btn.textContent = '✕ ' + (LANG==='ar'?'إغلاق':'Close');
+
+  formEl.innerHTML =
+    '<div style="background:var(--surf2);border:1px solid var(--purple)44;border-radius:12px;padding:14px;margin-bottom:8px">'
+    + '<div style="font-size:.72rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">🗓️ '+(LANG==='ar'?'تسجيل إيجار يومي':'New Daily Rental')+'</div>'
+    + '<div style="margin-bottom:10px"><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'اسم المستأجر':'Tenant Name')+'</label>'
+    +   '<input id="dr-name" class="inp" style="height:42px" placeholder="'+(LANG==='ar'?'الاسم...':'Name...')+'"></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +   '<div><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'تاريخ البداية':'Check-in')+'</label>'
+    +     '<input id="dr-from" class="inp" type="date" style="height:42px" value="'+today+'"></div>'
+    +   '<div><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'عدد الأيام':'Days')+'</label>'
+    +     '<input id="dr-days" class="inp" type="number" style="height:42px" min="1" value="1" oninput="calcDailyTotal()"></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
+    +   '<div><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'سعر الليلة':'Rate/Day')+'</label>'
+    +     '<input id="dr-rate" class="inp" type="number" style="height:42px" placeholder="0" oninput="calcDailyTotal()"></div>'
+    +   '<div><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'عدد الأشخاص':'Persons')+'</label>'
+    +     '<input id="dr-persons" class="inp" type="number" style="height:42px" min="1" value="1"></div>'
+    + '</div>'
+    + '<div style="background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">'
+    +   '<span style="font-size:.78rem;color:var(--muted)">'+(LANG==='ar'?'الإجمالي':'Total')+'</span>'
+    +   '<span id="dr-total" style="font-size:1.1rem;font-weight:800;color:var(--purple)">0 AED</span>'
+    + '</div>'
+    + '<button onclick="saveDailyRental('+unit.id+',\''+unit.apartment+'\',\''+unit.room+'\')" style="width:100%;padding:13px;background:var(--purple);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.88rem;font-weight:700;cursor:pointer">✅ '+(LANG==='ar'?'حفظ الإيجار اليومي':'Save Daily Rental')+'</button>'
+    + '</div>';
+}
+window.openDailyRentalForm = openDailyRentalForm;
+
+function calcDailyTotal() {
+  var rate  = Number(document.getElementById('dr-rate')?.value)  || 0;
+  var days  = Number(document.getElementById('dr-days')?.value)  || 0;
+  var total = rate * days;
+  var el = document.getElementById('dr-total');
+  if(el) el.textContent = total.toLocaleString() + ' AED';
+}
+window.calcDailyTotal = calcDailyTotal;
+
+async function saveDailyRental(unitId, apartment, room) {
+  var name    = document.getElementById('dr-name')?.value?.trim() || '';
+  var from    = document.getElementById('dr-from')?.value || '';
+  var days    = Number(document.getElementById('dr-days')?.value)    || 1;
+  var rate    = Number(document.getElementById('dr-rate')?.value)    || 0;
+  var persons = Number(document.getElementById('dr-persons')?.value) || 1;
+  var total   = rate * days;
+
+  if(!name)  { toast(LANG==='ar'?'أدخل اسم المستأجر':'Enter tenant name','err'); return; }
+  if(!from)  { toast(LANG==='ar'?'أدخل تاريخ البداية':'Enter start date','err'); return; }
+  if(!rate)  { toast(LANG==='ar'?'أدخل سعر الليلة':'Enter daily rate','err'); return; }
+
+  // حساب تاريخ الخروج
+  var fromDate = new Date(from);
+  var toDate   = new Date(fromDate);
+  toDate.setDate(toDate.getDate() + days);
+  var toStr = toDate.toISOString().slice(0,10);
+
+  // شهر الإيجار (للتقرير الشهري)
+  var rentMonth = from.slice(0,7) + '-01';
+
+  try {
+    var btn = document.querySelector('#daily-rental-form button');
+    if(btn) { btn.disabled=true; btn.textContent='⏳...'; }
+
+    // 1. سجّل في unit_history
+    var { error: histErr } = await sb.from('unit_history').insert({
+      unit_id:       unitId,
+      apartment:     Number(apartment),
+      room:          room,
+      tenant_name:   name,
+      monthly_rent:  0,
+      start_date:    from,
+      end_date:      toStr,
+      snapshot_type: 'daily_rental',
+      persons_count: persons,
+      daily_rate:    rate,
+      daily_days:    days,
+      daily_total:   total,
+      notes:         'إيجار يومي — '+days+' أيام × '+rate+' AED'
+    });
+    if(histErr) throw histErr;
+
+    // 2. سجّل دفعة في rent_payments عشان يظهر في التقرير الشهري
+    var { error: payErr } = await sb.from('rent_payments').insert({
+      unit_id:        unitId,
+      apartment:      apartment,
+      room:           room,
+      amount:         total,
+      amount_paid:    total,
+      payment_month:  rentMonth,
+      payment_date:   from,
+      payment_method: 'cash',
+      notes:          '🗓️ إيجار يومي: '+name+' — '+days+' أيام × '+rate+' AED'
+    });
+    if(payErr) throw payErr;
+
+    toast('✅ '+(LANG==='ar'?'تم تسجيل الإيجار اليومي':'Daily rental saved'), 'ok');
+    closeDrawer();
+    await loadUnits();
+
+  } catch(e) {
+    toast('خطأ: '+e.message, 'err');
+    console.error('saveDailyRental:', e);
+    var btn = document.querySelector('#daily-rental-form button');
+    if(btn) { btn.disabled=false; btn.textContent='✅ '+(LANG==='ar'?'حفظ الإيجار اليومي':'Save Daily Rental'); }
+  }
+}
+window.saveDailyRental = saveDailyRental;
 
 // ══════════════════════════════════════════════════════
 // إرجاع مستأجر سابق
