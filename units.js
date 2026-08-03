@@ -1241,7 +1241,7 @@ function sendBulkWA() {
     var phone = (card.dataset.phone||'').replace(/\D/g,'');
     if(phone.startsWith('0')) phone = '971'+phone.slice(1);
     if(!phone) return;
-    queue.push({phone:phone,name:card.dataset.name||'',apt:card.dataset.apt||'',room:card.dataset.room||'',rent:Number(card.dataset.rent)||0,paid:Number(card.dataset.paid)||0});
+    queue.push({phone:phone,name:card.dataset.name||'',apt:card.dataset.apt||'',room:card.dataset.room||'',rent:Number(card.dataset.rent)||0,paid:Number(card.dataset.paid)||0,lang:card.dataset.lang||'ar'});
   });
   if(!queue.length) { toast('لا يوجد مستأجرين بأرقام هواتف','err'); return; }
   window._waQueue = queue; window._waQueueIdx = 0; window._waMonthName = ym;
@@ -1251,11 +1251,29 @@ window.sendBulkWA = sendBulkWA;
 
 function buildWAQueueMsg(item) {
   var rem = Math.max(0, item.rent - item.paid);
+  var lang = item.lang || 'ar';
   var mn = window._waMonthName || '';
-  if(LANG==='en') return 'Dear '+item.name+',\nRent reminder: Apt '+item.apt+' Room '+item.room+(rem>0?'\n💰 Remaining: '+rem.toLocaleString()+' AED':'')+(mn?'\n📅 Month: '+mn:'')+'\n\nThank you 🙏';
-  return 'عزيزي/تي '+item.name+'،\nتذكير بموعد سداد الإيجار 🏠\nشقة '+item.apt+' — غرفة '+item.room+(rem>0?'\n💰 المتبقي: '+rem.toLocaleString()+' AED':'\n✅ تم السداد، شكراً!')+(mn?'\n📅 الشهر: '+mn:'')+'\n\nشكراً لكم 🙏';
+  var monthNamesAR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  var monthNamesEN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var mIdx = mn ? Number(mn.slice(5,7))-1 : new Date().getMonth();
+  var year = mn ? mn.slice(0,4) : String(new Date().getFullYear());
+  var monthLabel = lang === 'en' ? monthNamesEN[mIdx] : monthNamesAR[mIdx];
+  if(typeof buildWAMsg === 'function') {
+    return buildWAMsg(lang, item.name, item.apt, item.room, monthLabel, year, rem);
+  }
+  if(lang === 'en') return 'Dear '+item.name+',\nRent reminder: Apt '+item.apt+' Room '+item.room+(rem>0?'\n💰 Remaining: '+rem.toLocaleString()+' AED':'')+'\n\nThank you 🙏';
+  return 'عزيزي/تي '+item.name+'،\nتذكير بموعد سداد الإيجار 🏠\nشقة '+item.apt+' — غرفة '+item.room+(rem>0?'\n💰 المتبقي: '+rem.toLocaleString()+' AED':'')+'\n\nشكراً لكم 🙏';
 }
 window.buildWAQueueMsg = buildWAQueueMsg;
+
+function stopWAQueue() {
+  window._waQueue = []; window._waQueueIdx = 0;
+  var bar = document.getElementById('wa-send-bar');
+  if(bar) { bar.style.display='none'; bar.innerHTML='<span id="wa-selected-count" style="font-size:.82rem;font-weight:700;color:var(--green);flex:1">0 مختار</span><button onclick="selectAllUnpaid()" style="padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">⚠️ المتبقي</button><button onclick="sendBulkWA()" style="padding:6px 14px;background:#25D366;border:none;border-radius:8px;color:#fff;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💬 إرسال</button>'; }
+  toast('⏹️ تم إيقاف الإرسال','');
+  if(_waSelectMode) toggleWASelectMode();
+}
+window.stopWAQueue = stopWAQueue;
 
 function sendNextWA() {
   var queue = window._waQueue||[]; var idx = window._waQueueIdx||0;
@@ -1282,6 +1300,7 @@ function _waQueueBarProgress(sent, total) {
     +'<div style="background:var(--surf2);border-radius:4px;height:4px;margin-bottom:5px"><div style="background:var(--green);height:100%;width:'+(sent/total*100)+'%;border-radius:4px;transition:width .3s"></div></div>'
     +(next?'<div style="font-size:.72rem;color:var(--muted)">التالي: <b style="color:var(--text)">'+escapeHtml(next.name)+'</b></div>':'')
     +'</div>'
+    +'<button onclick="stopWAQueue()" style="padding:8px 12px;background:var(--red-bg);border:1px solid var(--red);border-radius:9px;color:var(--red);font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-left:6px">⏹️</button>'
     +'<button onclick="sendNextWA()" style="padding:8px 16px;background:#25D366;border:none;border-radius:9px;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-right:8px">'
     +(sent<total?'💬 التالي ←':'✅ إنهاء')+'</button>';
 }
