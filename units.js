@@ -301,7 +301,8 @@ function renderUnits(units, paidMap) {
       : '';
     var aptLabel = 'شقة '+escapeHtml(u.apartment)+' · '+escapeHtml(u.room);
 
-    return '<div class="unit-card" data-uid="'+u.id+'" style="border:1.5px solid '+stripeColor+'40;border-right:3px solid '+stripeColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);box-shadow:0 2px 10px rgba(0,0,0,.2);cursor:pointer;transition:transform .12s,box-shadow .18s;touch-action:manipulation">'
+    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+stripeColor+'40;border-right:3px solid '+stripeColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);box-shadow:0 2px 10px rgba(0,0,0,.2);cursor:pointer;transition:transform .12s,box-shadow .18s;touch-action:manipulation">'
+      +'<div class="unit-wa-check" onclick="event.stopPropagation()" style="display:none;flex-shrink:0;align-items:center"><input type="checkbox" data-uid="'+u.id+'" onchange="updateWABar()" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer"></div>'
       +'<div style="min-width:42px;height:42px;border-radius:12px;background:'+color+'20;color:'+color+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0">'+escapeHtml(u.apartment)+'</div>'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:.68rem;color:var(--muted);margin-bottom:1px">'+aptLabel+'</div>'
@@ -1162,6 +1163,136 @@ async function restorePrevTenant(data) {
   }
 }
 window.restorePrevTenant = restorePrevTenant;
+
+// ══════════════════════════════════════════════════════
+// إرسال واتساب جماعي
+// ══════════════════════════════════════════════════════
+var _waSelectMode = false;
+
+function unitCardClick(e, el, uid) {
+  if(_waSelectMode) {
+    e.stopPropagation();
+    var cb = el.querySelector('input[type=checkbox]');
+    if(cb) { cb.checked = !cb.checked; updateWABar(); }
+    el.style.outline = cb && cb.checked ? '2px solid var(--green)' : 'none';
+    return;
+  }
+  openDrawer(uid);
+}
+window.unitCardClick = unitCardClick;
+
+function toggleWASelectMode() {
+  _waSelectMode = !_waSelectMode;
+  var btn = document.getElementById('btn-wa-select');
+  var checks = document.querySelectorAll('.unit-wa-check');
+  checks.forEach(function(c){
+    c.style.display = _waSelectMode ? 'flex' : 'none';
+  });
+  // reset cards outline
+  document.querySelectorAll('.unit-card').forEach(function(c){
+    c.style.outline = 'none';
+    var cb = c.querySelector('input[type=checkbox]');
+    if(cb) cb.checked = false;
+  });
+  if(btn) {
+    btn.style.background = _waSelectMode ? 'var(--green)' : 'var(--surf2)';
+    btn.style.color      = _waSelectMode ? '#fff' : 'var(--muted)';
+    btn.textContent      = _waSelectMode ? '✕ إلغاء' : '💬 إرسال جماعي';
+  }
+  updateWABar();
+}
+window.toggleWASelectMode = toggleWASelectMode;
+
+function selectAllUnpaid() {
+  document.querySelectorAll('.unit-card').forEach(function(card){
+    var paid = Number(card.dataset.paid)||0;
+    var rent = Number(card.dataset.rent)||0;
+    var cb   = card.querySelector('input[type=checkbox]');
+    if(!cb) return;
+    var shouldSelect = rent > 0 && paid < rent;
+    cb.checked = shouldSelect;
+    card.style.outline = shouldSelect ? '2px solid var(--green)' : 'none';
+  });
+  updateWABar();
+}
+window.selectAllUnpaid = selectAllUnpaid;
+
+function updateWABar() {
+  var checked = document.querySelectorAll('.unit-card input[type=checkbox]:checked');
+  var bar = document.getElementById('wa-send-bar');
+  if(!bar) return;
+  if(checked.length > 0) {
+    bar.style.display = 'flex';
+    var countEl = document.getElementById('wa-selected-count');
+    if(countEl) countEl.textContent = checked.length + ' مختار';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+window.updateWABar = updateWABar;
+
+function sendBulkWA() {
+  var checked = document.querySelectorAll('.unit-card input[type=checkbox]:checked');
+  if(!checked.length) { toast('اختر مستأجرين أولاً','err'); return; }
+  var ym = window.getActiveMonth ? getActiveMonth() : '';
+  var queue = [];
+  checked.forEach(function(cb) {
+    var card = cb.closest('.unit-card');
+    var phone = (card.dataset.phone||'').replace(/\D/g,'');
+    if(phone.startsWith('0')) phone = '971'+phone.slice(1);
+    if(!phone) return;
+    queue.push({phone:phone,name:card.dataset.name||'',apt:card.dataset.apt||'',room:card.dataset.room||'',rent:Number(card.dataset.rent)||0,paid:Number(card.dataset.paid)||0});
+  });
+  if(!queue.length) { toast('لا يوجد مستأجرين بأرقام هواتف','err'); return; }
+  window._waQueue = queue; window._waQueueIdx = 0; window._waMonthName = ym;
+  sendNextWA();
+}
+window.sendBulkWA = sendBulkWA;
+
+function buildWAQueueMsg(item) {
+  var rem = Math.max(0, item.rent - item.paid);
+  var mn = window._waMonthName || '';
+  if(LANG==='en') return 'Dear '+item.name+',\nRent reminder: Apt '+item.apt+' Room '+item.room+(rem>0?'\n💰 Remaining: '+rem.toLocaleString()+' AED':'')+(mn?'\n📅 Month: '+mn:'')+'\n\nThank you 🙏';
+  return 'عزيزي/تي '+item.name+'،\nتذكير بموعد سداد الإيجار 🏠\nشقة '+item.apt+' — غرفة '+item.room+(rem>0?'\n💰 المتبقي: '+rem.toLocaleString()+' AED':'\n✅ تم السداد، شكراً!')+(mn?'\n📅 الشهر: '+mn:'')+'\n\nشكراً لكم 🙏';
+}
+window.buildWAQueueMsg = buildWAQueueMsg;
+
+function sendNextWA() {
+  var queue = window._waQueue||[]; var idx = window._waQueueIdx||0;
+  if(idx >= queue.length) {
+    _waQueueBarDone(queue.length);
+    toast('✅ تم إرسال '+queue.length+' رسالة','ok');
+    window._waQueue=[]; window._waQueueIdx=0;
+    toggleWASelectMode(); return;
+  }
+  var item = queue[idx];
+  window.open('https://wa.me/'+item.phone+'?text='+encodeURIComponent(buildWAQueueMsg(item)),'_blank');
+  window._waQueueIdx = idx+1;
+  _waQueueBarProgress(idx+1, queue.length);
+}
+window.sendNextWA = sendNextWA;
+
+function _waQueueBarProgress(sent, total) {
+  var bar = document.getElementById('wa-send-bar');
+  if(!bar) return;
+  var next = (window._waQueue||[])[sent]||null;
+  bar.style.display='flex';
+  bar.innerHTML = '<div style="flex:1;min-width:0">'
+    +'<div style="font-size:.7rem;color:var(--muted);margin-bottom:3px">'+sent+' / '+total+'</div>'
+    +'<div style="background:var(--surf2);border-radius:4px;height:4px;margin-bottom:5px"><div style="background:var(--green);height:100%;width:'+(sent/total*100)+'%;border-radius:4px;transition:width .3s"></div></div>'
+    +(next?'<div style="font-size:.72rem;color:var(--muted)">التالي: <b style="color:var(--text)">'+escapeHtml(next.name)+'</b></div>':'')
+    +'</div>'
+    +'<button onclick="sendNextWA()" style="padding:8px 16px;background:#25D366;border:none;border-radius:9px;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-right:8px">'
+    +(sent<total?'💬 التالي ←':'✅ إنهاء')+'</button>';
+}
+
+function _waQueueBarDone(total) {
+  var bar = document.getElementById('wa-send-bar');
+  if(!bar) return;
+  bar.style.display='flex';
+  bar.innerHTML = '<span style="flex:1;font-size:.82rem;font-weight:700;color:var(--green)">✅ تم إرسال '+total+' رسالة</span>'
+    +'<button onclick="document.getElementById(\"wa-send-bar\").style.display=\"none\"" style="padding:6px 12px;background:var(--surf2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:.75rem;cursor:pointer;font-family:inherit">إغلاق</button>';
+}
 
 // ══════════════════════════════════════════════════════
 // UNIT MAP — خريطة الوحدات

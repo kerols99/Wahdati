@@ -220,7 +220,15 @@
   <select id="building-filter" onchange="filterUnits()" style="flex:1;padding:10px 12px;background:var(--surf2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:var(--font);font-size:.8rem;cursor:pointer">
     <option value="">🏢 كل المباني</option>
   </select>
-  <button onclick="toggleUnitMap(this)" id="btn-unit-map" style="padding:10px 14px;background:var(--surf2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap">🗺️ خريطة</button>
+  <button onclick="toggleWASelectMode()" id="btn-wa-select" style="padding:10px 12px;background:var(--surf2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap">💬 جماعي</button>
+  <button onclick="toggleUnitMap(this)" id="btn-unit-map" style="padding:10px 12px;background:var(--surf2);border:1.5px solid var(--border);border-radius:var(--radius-sm);color:var(--muted);font-family:var(--font);font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap">🗺️ خريطة</button>
+</div>
+
+<!-- Floating WA bar -->
+<div id="wa-send-bar" style="display:none;position:fixed;bottom:calc(68px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:500;background:var(--surf);border:2px solid var(--green);border-radius:14px;padding:10px 14px;box-shadow:0 4px 24px rgba(0,0,0,.35);display:none;align-items:center;gap:8px;max-width:340px;width:calc(100% - 32px)">
+  <span id="wa-selected-count" style="font-size:.82rem;font-weight:700;color:var(--green);flex:1">0 مختار</span>
+  <button onclick="selectAllUnpaid()" style="padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">⚠️ المتبقي</button>
+  <button onclick="sendBulkWA()" style="padding:6px 14px;background:#25D366;border:none;border-radius:8px;color:#fff;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💬 إرسال</button>
 </div>
 <div class="search-wrap">
 <input class="inp" data-input="filterUnits" id="search-inp" placeholder="ابحث بالشقة أو الاسم..." autocomplete="off"/>
