@@ -301,7 +301,7 @@ function renderUnits(units, paidMap) {
       : '';
     var aptLabel = 'شقة '+escapeHtml(u.apartment)+' · '+escapeHtml(u.room);
 
-    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+stripeColor+'40;border-right:3px solid '+stripeColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);box-shadow:0 2px 10px rgba(0,0,0,.2);cursor:pointer;transition:transform .12s,box-shadow .18s;touch-action:manipulation">'
+    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+stripeColor+'40;border-right:3px solid '+stripeColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);box-shadow:0 2px 10px rgba(0,0,0,.2);cursor:pointer;transition:transform .12s,box-shadow .18s;touch-action:manipulation">'
       +'<div class="unit-wa-check" onclick="event.stopPropagation()" style="display:none;flex-shrink:0;align-items:center"><input type="checkbox" data-uid="'+u.id+'" onchange="updateWABar()" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer"></div>'
       +'<div style="min-width:42px;height:42px;border-radius:12px;background:'+color+'20;color:'+color+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0">'+escapeHtml(u.apartment)+'</div>'
       +'<div style="flex:1;min-width:0">'
@@ -1251,16 +1251,14 @@ window.sendBulkWA = sendBulkWA;
 
 function buildWAQueueMsg(item) {
   var rem = Math.max(0, item.rent - item.paid);
-  var lang = item.lang || 'ar';
+  var lang = (item.lang || 'ar').toLowerCase();
   var mn = window._waMonthName || '';
   var monthNamesAR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   var monthNamesEN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   var mIdx = mn ? Number(mn.slice(5,7))-1 : new Date().getMonth();
   var year = mn ? mn.slice(0,4) : String(new Date().getFullYear());
   var monthLabel = lang === 'en' ? monthNamesEN[mIdx] : monthNamesAR[mIdx];
-  if(typeof buildWAMsg === 'function') {
-    return buildWAMsg(lang, item.name, item.apt, item.room, monthLabel, year, rem);
-  }
+  if(typeof buildWAMsg === 'function') return buildWAMsg(lang, item.name, item.apt, item.room, monthLabel, year, rem);
   if(lang === 'en') return 'Dear '+item.name+',\nRent reminder: Apt '+item.apt+' Room '+item.room+(rem>0?'\n💰 Remaining: '+rem.toLocaleString()+' AED':'')+'\n\nThank you 🙏';
   return 'عزيزي/تي '+item.name+'،\nتذكير بموعد سداد الإيجار 🏠\nشقة '+item.apt+' — غرفة '+item.room+(rem>0?'\n💰 المتبقي: '+rem.toLocaleString()+' AED':'')+'\n\nشكراً لكم 🙏';
 }
