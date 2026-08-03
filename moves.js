@@ -932,7 +932,17 @@ async function deleteMoveEntry(id, type) {
   } catch(e) { toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message,'err'); }
 }
 
+function generateContractSerial(apt, room) {
+  var now  = new Date();
+  var yyyy = now.getFullYear();
+  var mm   = String(now.getMonth()+1).padStart(2,'0');
+  var rand = String(Math.floor(Math.random()*9000)+1000);
+  return 'C-'+yyyy+mm+'-'+apt+room+'-'+rand;
+}
+window.generateContractSerial = generateContractSerial;
+
 function buildWelcomeLetter(name, room, apt, rent, dep, building, startEn, startAr, persons, idNum) {
+  var serial = generateContractSerial(apt, room);
   var totalDeposit = Number(dep||0) || 0;
   var received = totalDeposit;
   var personsAr = String(persons) === '1' ? 'فرد واحد فقط' : (persons + ' أفراد فقط');
@@ -961,7 +971,9 @@ function buildWelcomeLetter(name, room, apt, rent, dep, building, startEn, start
     + '@page{size:A4;margin:7mm;} html,body{margin:0;padding:0;font-family:Arial,sans-serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;} .contract-sheet{color:#111;font-size:9.15px;line-height:1.2;padding:4px 6px;page-break-after:avoid;min-height:calc(100vh - 14mm);display:flex;flex-direction:column} .title{font-size:14.5px;font-weight:800;text-align:center;margin-bottom:3px;color:#1a3a6e} .sub{font-size:8.9px;text-align:center;color:#555;margin-bottom:6px} .box{border:1.25px solid #1a3a6e;border-radius:8px;overflow:hidden;margin-bottom:7px;page-break-inside:avoid} table{width:100%;border-collapse:collapse;table-layout:fixed} td{border:1px solid #d6deeb;padding:4px 5px;vertical-align:top;word-wrap:break-word} .ehead,.ahead{background:#f4f7fc;font-weight:700;width:14%} .eval,.aval{width:36%} .ahead,.aval{text-align:right;direction:rtl} .center{text-align:center} .muted{color:#666;font-size:8px} .sig{height:22px} .sign td{padding:8px 10px} strong{font-weight:800}</style>'
     + '<div class="title">BOOKING RECEIPT & HOUSE RULES | إيصال الحجز وشروط السكن</div>'
     + '<div class="sub">Entry date: '+esc(startEn)+' &nbsp;|&nbsp; تاريخ الدخول: '+esc(startAr)+' &nbsp;|&nbsp; Extended until tenant notifies departure / ممتد حتى يبلغ المستأجر بالمغادرة</div>'
+    + '<div style="text-align:center;margin-bottom:6px"><span style="background:#1a3a6e;color:#fff;padding:2px 12px;border-radius:20px;font-size:8.5px;font-weight:700;letter-spacing:.5px">Contract No. / رقم العقد: '+serial+'</span></div>'
     + '<div class="box"><table>'
+    + '<tr><td class="ehead">Contract No.</td><td class="eval" style="font-weight:700;color:#1a3a6e">'+serial+'</td><td class="ahead">رقم العقد</td><td class="aval" style="font-weight:700;color:#1a3a6e;direction:rtl">'+serial+'</td></tr>'
     + '<tr><td class="ehead">Tenant Name</td><td class="eval">'+esc(name)+'</td><td class="ahead">اسم المستأجر</td><td class="aval">'+esc(name)+'</td></tr>'
     + '<tr><td class="ehead">Partition / Apt</td><td class="eval">Partition '+esc(room)+' — Apt '+esc(apt)+' — '+esc(building)+'</td><td class="ahead">البارتشن / الشقة</td><td class="aval">بارتشن '+esc(room)+' — شقة '+esc(apt)+' — '+esc(building)+'</td></tr>'
     + '<tr><td class="ehead">Monthly Rent</td><td class="eval">'+esc(rent)+' AED</td><td class="ahead">الإيجار الشهري</td><td class="aval">'+esc(rent)+' درهم</td></tr>'
