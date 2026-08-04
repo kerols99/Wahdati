@@ -486,6 +486,49 @@ async function saveArrivalEntry(btn){
     if(doUpdate) {
       toast(LANG==='ar'?'تم تحديث بيانات الوحدة ✓':'Unit updated ✓','ok');
     }
+
+    // ── زرار إرسال العقد ──
+    var contractBtn = document.createElement('div');
+    contractBtn.style.cssText = 'position:fixed;bottom:calc(72px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:600;background:var(--surf);border:2px solid var(--accent);border-radius:14px;padding:12px 16px;box-shadow:0 4px 24px rgba(0,0,0,.3);display:flex;align-items:center;gap:10px;max-width:340px;width:calc(100% - 32px);animation:slideUp .25s both';
+    contractBtn.innerHTML =
+      '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:.78rem;font-weight:700;color:var(--text)">✅ '+(LANG==='ar'?'تم تسجيل المستأجر':'Tenant registered')+'</div>'
+      + '<div style="font-size:.7rem;color:var(--muted);margin-top:2px">'+(LANG==='ar'?'عايز ترسل العقد؟':'Send contract?')+'</div>'
+      + '</div>'
+      + '<button onclick="this.closest(\'div[style]\').remove()" style="padding:6px 10px;background:var(--surf2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:.72rem;cursor:pointer;font-family:inherit">✕</button>'
+      + '<button id="contract-quick-btn" style="padding:8px 14px;background:#25D366;border:none;border-radius:9px;color:#fff;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📄 إرسال العقد</button>';
+    document.body.appendChild(contractBtn);
+
+    // حفظ بيانات المستأجر الجديد للعقد
+    window._pendingContractData = {name:name,apt:apt,room:room,rent:rent,dep:deposit,phone:phone,persons:persons,date:date,lang:lang};
+
+    document.getElementById('contract-quick-btn').onclick = function(){
+      contractBtn.remove();
+      // ملء بيانات العقد وإرساله
+      goPanel('moves');
+      setTimeout(function(){
+        var welcomeTab = document.querySelector('[onclick*="tWelcome"]');
+        if(welcomeTab) welcomeTab.click();
+        setTimeout(function(){
+          var cd = window._pendingContractData || {};
+          var el = function(id){ return document.getElementById(id); };
+          if(el('wl-name'))    el('wl-name').value    = cd.name    || '';
+          if(el('wl-room'))    el('wl-room').value    = cd.room    || '';
+          if(el('wl-apt'))     el('wl-apt').value     = cd.apt     || '';
+          if(el('wl-rent'))    el('wl-rent').value    = cd.rent    || '';
+          if(el('wl-dep'))     el('wl-dep').value     = cd.dep     || '';
+          if(el('wl-persons')) el('wl-persons').value = cd.persons || '1';
+          if(el('wl-phone'))   el('wl-phone').value   = (cd.phone||'').replace(/\D/g,'');
+          if(el('wl-start'))   el('wl-start').value   = cd.date   || '';
+          setTimeout(function(){
+            if(typeof sendContractViaWA === 'function') sendContractViaWA();
+          }, 300);
+        }, 200);
+      }, 200);
+    };
+
+    // يختفي بعد 15 ثانية
+    setTimeout(function(){ if(contractBtn.parentNode) contractBtn.remove(); }, 15000);
   } catch(e) {
     toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message,'err');
   } finally {
@@ -1050,6 +1093,75 @@ async function printWelcomeLetter() {
   setTimeout(function(){ iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 250);
 }
 
+async function sendContractViaWA() {
+  var d = getWelcomeData();
+  if(!d.name || !d.apt || !d.room) {
+    toast(LANG==='ar'?'أدخل بيانات المستأجر أولاً':'Enter tenant data first','err');
+    return;
+  }
+
+  await persistWelcomeData(d);
+
+  // 1. ولّد الـ serial
+  var serial = generateContractSerial(d.apt, d.room);
+  window._lastContractSerial = serial;
+
+  // 2. ولّد PDF وافتح dialog الحفظ
+  var html = buildWelcomeLetter(d.name, d.room, d.apt, d.rent, d.dep, d.building, d.startEn, d.startAr, d.persons, d.idNum);
+  window._welcomeHTML = html;
+
+  var iframe = document.getElementById('print-frame');
+  if(!iframe){
+    iframe = document.createElement('iframe');
+    iframe.id = 'print-frame';
+    iframe.style.cssText = 'position:fixed;right:-9999px;bottom:0;width:1px;height:1px;border:0';
+    document.body.appendChild(iframe);
+  }
+  var doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contract '+serial+'</title></head><body>'+html+'</body></html>');
+  doc.close();
+
+  // 3. افتح print dialog (حفظ PDF)
+  setTimeout(function(){
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+
+    // 4. بعد ثانيتين افتح واتساب برسالة فيها رقم العقد
+    setTimeout(function(){
+      var phone = (d.phone || '').replace(/\D/g,'');
+      if(phone.startsWith('0')) phone = '971'+phone.slice(1);
+
+      var lang = (d.language || LANG || 'ar').toLowerCase();
+      var msg;
+      if(lang === 'en') {
+        msg = 'Dear '+d.name+','
+          + '\n\nPlease find attached your Booking Contract.'
+          + '\n\n📋 Contract No.: '+serial
+          + '\n🏠 Partition '+d.room+' — Apt '+d.apt
+          + '\n💰 Monthly Rent: '+d.rent+' AED'
+          + '\n📅 Start Date: '+d.startEn
+          + '\n\nKindly save the PDF you just received for your records.'
+          + '\n\nThank you 🙏';
+      } else {
+        msg = 'عزيزي/تي '+d.name+'،'
+          + '\n\nيرجى الاطلاع على عقد الحجز المرفق.'
+          + '\n\n📋 رقم العقد: '+serial
+          + '\n🏠 بارتشن '+d.room+' — شقة '+d.apt
+          + '\n💰 الإيجار الشهري: '+d.rent+' درهم'
+          + '\n📅 تاريخ الدخول: '+d.startAr
+          + '\n\nيرجى حفظ PDF العقد الذي استلمته للرجوع إليه عند الحاجة.'
+          + '\n\nشكراً لكم 🙏';
+      }
+
+      var url = 'https://wa.me/'+(phone||'')+'?text='+encodeURIComponent(msg);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      toast('✅ '+(lang==='en'?'PDF saved — WhatsApp opened':'تم حفظ PDF — واتساب مفتوح'), 'ok');
+    }, 2000);
+  }, 250);
+}
+window.sendContractViaWA = sendContractViaWA;
+
 async function sendWelcomeWA() {
   try {
   var d = getWelcomeData();
@@ -1085,7 +1197,7 @@ function buildDepositWAMsg(d) {
   ].join('\n');
 }
 
-window.getWelcomeData=getWelcomeData; window.loadMovesList=loadMovesList; window.addMoveEntry=addMoveEntry; window.saveMoveEntry=saveMoveEntry; window.deleteMoveEntry=deleteMoveEntry; window.showWelcomeLetter=showWelcomeLetter; window.printWelcomeLetter=printWelcomeLetter; window.buildWelcomeLetter=buildWelcomeLetter; window.sendWelcomeWA=sendWelcomeWA; window.buildWAMsg=buildWAMsg; window.addDepartureModal=addDepartureModal; window.addArrivalModal=addArrivalModal; window.saveArrivalEntry=saveArrivalEntry; window.fetchOccupiedUnits=fetchOccupiedUnits; window.fetchDepartures=fetchDepartures;
+window.getWelcomeData=getWelcomeData; window.loadMovesList=loadMovesList; window.addMoveEntry=addMoveEntry; window.saveMoveEntry=saveMoveEntry; window.deleteMoveEntry=deleteMoveEntry; window.showWelcomeLetter=showWelcomeLetter; window.printWelcomeLetter=printWelcomeLetter; window.buildWelcomeLetter=buildWelcomeLetter; window.sendWelcomeWA=sendWelcomeWA; window.buildWAMsg=buildWAMsg; window.addDepartureModal=addDepartureModal; window.addArrivalModal=addArrivalModal; window.saveArrivalEntry=saveArrivalEntry; window.fetchOccupiedUnits=fetchOccupiedUnits; window.fetchDepartures=fetchDepartures; window.sendContractViaWA=sendContractViaWA; window.generateContractSerial=generateContractSerial;
 
 
 // ══════════════════════════════════════════════════════

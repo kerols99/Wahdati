@@ -641,7 +641,33 @@ var now = new Date();
   // Inject profile + timeline buttons
   var _aptLabel = (LANG==='ar'?'شقة':'Apt')+' '+_u.apartment+' — '+_u.room;
   if(window.injectProfileButtons) setTimeout(function(){ window.injectProfileButtons(_u.id, _aptLabel); }, 10);
-  document.getElementById('drawer-contract-btn').onclick = function(){ openWelcomeFromUnit(_u); };
+  document.getElementById('drawer-contract-btn').onclick = function(){
+    var u = _u;
+    // فتح صفحة العقد مع ملء البيانات وإرسال واتساب
+    closeDrawer();
+    setTimeout(function(){
+      goPanel('moves');
+      setTimeout(function(){
+        var welcomeTab = document.querySelector('[onclick*="tWelcome"]');
+        if(welcomeTab) welcomeTab.click();
+        setTimeout(function(){
+          var el = function(id){ return document.getElementById(id); };
+          if(el('wl-name'))    el('wl-name').value    = u.tenant_name || '';
+          if(el('wl-room'))    el('wl-room').value    = u.room || '';
+          if(el('wl-apt'))     el('wl-apt').value     = u.apartment || '';
+          if(el('wl-rent'))    el('wl-rent').value    = u.monthly_rent || '';
+          if(el('wl-dep'))     el('wl-dep').value     = u.deposit || '';
+          if(el('wl-persons')) el('wl-persons').value = u.persons_count || '1';
+          if(el('wl-phone'))   el('wl-phone').value   = (u.phone||'').replace(/\D/g,'');
+          if(el('wl-start') && u.start_date) el('wl-start').value = u.start_date.slice(0,10);
+          // إرسال العقد واتساب
+          setTimeout(function(){
+            if(typeof sendContractViaWA === 'function') sendContractViaWA();
+          }, 300);
+        }, 200);
+      }, 100);
+    }, 300);
+  };
 
   // ── إيجار يومي ──
   document.getElementById('drawer-daily-btn').onclick = function(){ openDailyRentalForm(_u); };
