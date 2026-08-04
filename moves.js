@@ -1011,7 +1011,7 @@ function buildWelcomeLetter(name, room, apt, rent, dep, building, startEn, start
   return ''
     + '<div class="contract-sheet">'
     + '<style>'
-    + '@page{size:A4;margin:7mm;} html,body{margin:0;padding:0;font-family:Arial,sans-serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;} .contract-sheet{color:#111;font-size:9.15px;line-height:1.2;padding:4px 6px;page-break-after:avoid;min-height:calc(100vh - 14mm);display:flex;flex-direction:column} .title{font-size:14.5px;font-weight:800;text-align:center;margin-bottom:3px;color:#1a3a6e} .sub{font-size:8.9px;text-align:center;color:#555;margin-bottom:6px} .box{border:1.25px solid #1a3a6e;border-radius:8px;overflow:hidden;margin-bottom:7px;page-break-inside:avoid} table{width:100%;border-collapse:collapse;table-layout:fixed} td{border:1px solid #d6deeb;padding:4px 5px;vertical-align:top;word-wrap:break-word} .ehead,.ahead{background:#f4f7fc;font-weight:700;width:14%} .eval,.aval{width:36%} .ahead,.aval{text-align:right;direction:rtl} .center{text-align:center} .muted{color:#666;font-size:8px} .sig{height:22px} .sign td{padding:8px 10px} strong{font-weight:800}</style>'
+    + '@page{size:A4;margin:7mm;margin-top:0;margin-bottom:0;} html,body{margin:0;padding:0;font-family:Arial,sans-serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;} .contract-sheet{color:#111;font-size:9.15px;line-height:1.2;padding:4px 6px;page-break-after:avoid;min-height:calc(100vh - 14mm);display:flex;flex-direction:column} .title{font-size:14.5px;font-weight:800;text-align:center;margin-bottom:3px;color:#1a3a6e} .sub{font-size:8.9px;text-align:center;color:#555;margin-bottom:6px} .box{border:1.25px solid #1a3a6e;border-radius:8px;overflow:hidden;margin-bottom:7px;page-break-inside:avoid} table{width:100%;border-collapse:collapse;table-layout:fixed} td{border:1px solid #d6deeb;padding:4px 5px;vertical-align:top;word-wrap:break-word} .ehead,.ahead{background:#f4f7fc;font-weight:700;width:14%} .eval,.aval{width:36%} .ahead,.aval{text-align:right;direction:rtl} .center{text-align:center} .muted{color:#666;font-size:8px} .sig{height:22px} .sign td{padding:8px 10px} strong{font-weight:800}</style>'
     + '<div class="title">BOOKING RECEIPT & HOUSE RULES | إيصال الحجز وشروط السكن</div>'
     + '<div class="sub">Entry date: '+esc(startEn)+' &nbsp;|&nbsp; تاريخ الدخول: '+esc(startAr)+' &nbsp;|&nbsp; Extended until tenant notifies departure / ممتد حتى يبلغ المستأجر بالمغادرة</div>'
     + '<div style="text-align:center;margin-bottom:6px"><span style="background:#1a3a6e;color:#fff;padding:2px 12px;border-radius:20px;font-size:8.5px;font-weight:700;letter-spacing:.5px">Contract No. / رقم العقد: '+serial+'</span></div>'
@@ -1088,7 +1088,7 @@ async function printWelcomeLetter() {
   }
   var doc = iframe.contentWindow.document;
   doc.open();
-  doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contract</title></head><body>'+html+'</body></html>');
+  doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contract</title><style>@page{margin:7mm;size:A4;}@media print{head,header,footer{display:none!important;}html,body{margin:0!important;padding:0!important;background:#fff;}}</style></head><body>'+html+'</body></html>');
   doc.close();
   setTimeout(function(){ iframe.contentWindow.focus(); iframe.contentWindow.print(); }, 250);
 }
@@ -1119,7 +1119,7 @@ async function sendContractViaWA() {
   }
   var doc = iframe.contentWindow.document;
   doc.open();
-  doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contract '+serial+'</title></head><body>'+html+'</body></html>');
+  doc.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Contract '+serial+'</title><style>@page{margin:7mm;size:A4;}@media print{head,header,footer{display:none!important;}html,body{margin:0!important;padding:0!important;background:#fff;}}</style></head><body>'+html+'</body></html>');
   doc.close();
 
   // 3. افتح print dialog (حفظ PDF)
