@@ -937,3 +937,16 @@ tr:hover td { background: var(--surf2); }
 :root:not([data-theme="light"]) [style*="border:1px solid var(--amber)"] {
   border-color: var(--border) !important;
 }
+
+/* ══ Unit card status borders — clear in both modes ══ */
+/* Dark mode: semi-transparent colors already visible */
+.unit-card[data-status="paid"]    { border-color: var(--green) !important; border-opacity: .5; }
+.unit-card[data-status="partial"] { border-color: var(--amber) !important; }
+.unit-card[data-status="unpaid"]  { border-color: var(--red)   !important; }
+.unit-card[data-status="vacant"]  { border-color: var(--border) !important; }
+
+/* Light mode: use Airbnb semantic colors — more saturated, clearly visible on white */
+[data-theme="light"] .unit-card[data-status="paid"]    { border-color: #008a05 !important; background: rgba(0,138,5,.02) !important; }
+[data-theme="light"] .unit-card[data-status="partial"] { border-color: #8c5700 !important; background: rgba(140,87,0,.02) !important; }
+[data-theme="light"] .unit-card[data-status="unpaid"]  { border-color: #c13515 !important; background: rgba(193,53,21,.02) !important; }
+[data-theme="light"] .unit-card[data-status="vacant"]  { border-color: #dddddd !important; }

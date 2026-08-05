@@ -249,10 +249,10 @@ function renderUnits(units, paidMap) {
 
     if(u.is_vacant || u.unit_status === 'available') {
       statusColor='var(--muted)'; statusTxt=LANG==='ar'?'🏠 شاغرة':'🏠 Vacant';
-      badgeBg='var(--surf2)'; stripeColor='var(--border)'; borderColor='var(--border)';
+      badgeBg='var(--surf2)'; stripeColor='var(--border)'; borderColor='var(--border)'; cardStatus='vacant';
     } else if(isMaintenance) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'🔧 صيانة':'🔧 Maint.';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; cardStatus='partial'; borderColor='var(--amber)88'; cardStatus='partial';
     } else if(isReserved) {
       statusColor='var(--purple)'; statusTxt=LANG==='ar'?'🔖 محجوز':'🔖 Reserved';
       badgeBg='rgba(167,139,245,.1)'; stripeColor='var(--purple)'; borderColor='var(--border)';
@@ -261,10 +261,10 @@ function renderUnits(units, paidMap) {
       var paidFmr = paidMap[u.id]||0;
       if(paidFmr >= (u.monthly_rent||1) && u.monthly_rent > 0) {
         statusColor='var(--green)'; statusTxt=LANG==='ar'?'👋 غادر/مدفوع':'👋 Left/Paid';
-        badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)55';
+        badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)88'; cardStatus='paid';
       } else if(paidFmr > 0) {
         statusColor='var(--amber)'; statusTxt=LANG==='ar'?'👋 غادر/جزئي':'👋 Left/Partial';
-        badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
+        badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; cardStatus='partial'; borderColor='var(--amber)88'; cardStatus='partial';
       } else {
         statusColor='var(--muted)'; statusTxt=LANG==='ar'?'👋 غادر':'👋 Left';
         badgeBg='var(--surf3)'; stripeColor='var(--muted)'; borderColor='var(--border)';
@@ -275,19 +275,19 @@ function renderUnits(units, paidMap) {
       badgeBg='var(--surf3)'; stripeColor='var(--muted)'; borderColor='var(--border)';
     } else if(isLeaving) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'📤 مغادر':'📤 Leaving';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; cardStatus='partial'; borderColor='var(--amber)88'; cardStatus='partial';
     } else if(isNewThisMonth && paid === 0) {
       statusColor='var(--accent)'; statusTxt=LANG==='ar'?'🆕 جديد':'🆕 New';
       badgeBg='var(--accent-glow)'; stripeColor='var(--accent)'; borderColor='var(--border)';
     } else if(paid >= rent && rent > 0) {
       statusColor='var(--green)'; statusTxt=LANG==='ar'?'✓ مدفوع':'✓ Paid';
-      badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)55';
+      badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)88'; cardStatus='paid';
     } else if(paid > 0) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'◑ جزئي':'◑ Partial';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; cardStatus='partial'; borderColor='var(--amber)88'; cardStatus='partial';
     } else {
       statusColor='var(--red)'; statusTxt=LANG==='ar'?'✕ لم يدفع':'✕ Unpaid';
-      badgeBg='var(--red-bg)'; stripeColor='var(--red)'; borderColor='var(--red)55';
+      badgeBg='var(--red-bg)'; stripeColor='var(--red)'; borderColor='var(--red)88'; cardStatus='unpaid';
     }
 
     var _disc = window._discountMapCache ? (window._discountMapCache[u.id]||0) : 0;
@@ -301,7 +301,7 @@ function renderUnits(units, paidMap) {
       : '';
     var aptLabel = 'شقة '+escapeHtml(u.apartment)+' · '+escapeHtml(u.room);
 
-    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+borderColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);cursor:pointer;transition:box-shadow .15s,transform .1s;touch-action:manipulation">'
+    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" data-status="'+cardStatus+'" style="border:1.5px solid '+borderColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);cursor:pointer;transition:box-shadow .15s,transform .1s;touch-action:manipulation">'
       +'<div class="unit-wa-check" onclick="event.stopPropagation()" style="display:none;flex-shrink:0;align-items:center"><input type="checkbox" data-uid="'+u.id+'" onchange="updateWABar()" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer"></div>'
       +'<div style="min-width:42px;height:42px;border-radius:10px;background:var(--surf2);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0;border:1px solid var(--border)">'+escapeHtml(u.apartment)+'</div>'
       +'<div style="flex:1;min-width:0">'
