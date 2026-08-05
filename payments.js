@@ -1041,16 +1041,27 @@ function printPaymentReceipt() {
     localStorage.setItem('receipts', JSON.stringify(saved));
   } catch(e) {}
 
-  // WhatsApp link
-  var waLink = '';
-  if(r.phone) {
-    var phone = String(r.phone).replace(/[^0-9+]/g,'');
-    if(phone.startsWith('0')) phone = '971' + phone.slice(1);
-    var waMsg = isEn
+  // WhatsApp link — with phone picker
+  var waMsg = '';
+  if(r.phone || r.phone2) {
+    var _phone1 = String(r.phone||'').replace(/[^0-9+]/g,'');
+    if(_phone1.startsWith('0')) _phone1 = '971' + _phone1.slice(1);
+    var _phone2 = String(r.phone2||'').replace(/[^0-9+]/g,'');
+    if(_phone2.startsWith('0')) _phone2 = '971' + _phone2.slice(1);
+
+    waMsg = isEn
       ? 'Receipt No: ' + receiptNum + '%0AUnit: Apt ' + r.apt + ' - Room ' + r.room + '%0AAmount: ' + Number(r.amount).toLocaleString() + ' AED%0AMonth: ' + monthStr + '%0ADate: ' + dateStr + '%0AMethod: ' + methodLabel + '%0AThank you.'
       : 'رقم الإيصال: ' + receiptNum + '%0Aالوحدة: شقة ' + r.apt + ' - غرفة ' + r.room + '%0Aالمبلغ: ' + Number(r.amount).toLocaleString() + ' AED%0Aالشهر: ' + monthStr + '%0Aالتاريخ: ' + dateStr + '%0Aالطريقة: ' + methodLabel + '%0Aشكراً لك.';
-    waLink = 'https://wa.me/' + phone + '?text=' + waMsg;
+
+    // لو في رقمين — بنيجيب اختيار، لو رقم واحد بس — نبعت عليه مباشرة
+    window._waReceiptMsg   = waMsg;
+    window._waReceiptPhone1 = _phone1;
+    window._waReceiptPhone2 = _phone2;
+    window._waReceiptName1  = r.tenant || '';
+    window._waReceiptName2  = r.tenant2 || '';
   }
+
+  var waLink = '';
 
   var dir = isEn ? 'ltr' : 'rtl';
   var body = '<style>'
@@ -1086,7 +1097,7 @@ function printPaymentReceipt() {
         +'<div style="font-size:12px;color:#555;margin-bottom:6px">'+(isEn?'Amount Received':'المبلغ المستلم')+'</div>'
         +'<div class="amount-big">AED '+Number(r.amount).toLocaleString()+'</div>'
       +'</div>'
-      +(waLink ? '<a href="'+waLink+'" target="_blank" class="wa-btn">💬 '+(isEn?'Send via WhatsApp':'إرسال عبر واتساب')+'</a>' : '')
+      +(r.phone||r.phone2 ? '<button onclick="openWAPhonePicker()" class="wa-btn">💬 '+(isEn?'Send via WhatsApp':'إرسال عبر واتساب')+'</button>' : '')
     +'</div>'
     +'<div class="footer">'
       +'<div>'+(isEn?'Thank you — Property Management':'شكراً لك — إدارة العقارات')+'</div>'
@@ -1715,3 +1726,49 @@ async function bulkSavePay(unitId, apt, room, mon, today) {
 
 window.loadBulkPay  = loadBulkPay;
 window.bulkSavePay  = bulkSavePay;
+
+// ── WA Phone Picker للإيصال ──
+function openWAPhonePicker() {
+  var phone1 = window._waReceiptPhone1 || '';
+  var phone2 = window._waReceiptPhone2 || '';
+  var name1  = window._waReceiptName1  || '';
+  var name2  = window._waReceiptName2  || '';
+  var msg    = window._waReceiptMsg    || '';
+
+  // لو رقم واحد بس — ابعت مباشرة
+  if(phone1 && !phone2) {
+    window.open('https://wa.me/' + phone1 + '?text=' + msg, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if(phone2 && !phone1) {
+    window.open('https://wa.me/' + phone2 + '?text=' + msg, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if(!phone1 && !phone2) {
+    toast(LANG==='ar'?'لا يوجد رقم هاتف':'No phone number','err');
+    return;
+  }
+
+  // لو في رقمين — اعرض picker
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(2px)';
+  overlay.innerHTML =
+    '<div style="background:var(--surf);border-radius:20px 20px 0 0;padding:20px 16px 32px;width:100%;max-width:420px;box-shadow:0 -4px 24px rgba(0,0,0,.3)">'
+    + '<div style="width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>'
+    + '<div style="font-size:15px;font-weight:700;color:var(--text);text-align:center;margin-bottom:16px">💬 '+(LANG==='ar'?'اختر الرقم للإرسال':'Choose number to send')+'</div>'
+    + '<button onclick="window.open(\'https://wa.me/'+phone1+'?text='+msg+'\',\'_blank\');this.closest(\'div[style*=fixed]\').remove()" style="width:100%;padding:14px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;text-align:right;direction:rtl">'
+    +   '<div style="font-size:12px;color:var(--muted)">'+(LANG==='ar'?'المستأجر الأول':'Tenant 1')+(name1?' — '+name1:'')+'</div>'
+    +   '<div style="font-size:16px;font-weight:700;color:var(--green);margin-top:3px">📱 '+phone1+'</div>'
+    + '</button>'
+    + '<button onclick="window.open(\'https://wa.me/'+phone2+'?text='+msg+'\',\'_blank\');this.closest(\'div[style*=fixed]\').remove()" style="width:100%;padding:14px;background:var(--surf2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;text-align:right;direction:rtl">'
+    +   '<div style="font-size:12px;color:var(--muted)">'+(LANG==='ar'?'المستأجر الثاني':'Tenant 2')+(name2?' — '+name2:'')+'</div>'
+    +   '<div style="font-size:16px;font-weight:700;color:var(--green);margin-top:3px">📱 '+phone2+'</div>'
+    + '</button>'
+    + '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="width:100%;padding:12px;background:none;border:none;color:var(--muted);font-family:inherit;font-size:14px;cursor:pointer">'+(LANG==='ar'?'إلغاء':'Cancel')+'</button>'
+    + '</div>';
+
+  // إغلاق لما تضغط خارج الـ sheet
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+window.openWAPhonePicker = openWAPhonePicker;
