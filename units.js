@@ -237,7 +237,7 @@ function renderUnits(units, paidMap) {
     var color = aptColors[ci];
     var paid = paidMap[u.id]||0;
     var rent = u.monthly_rent||0;
-    var statusColor, statusTxt, badgeBg, stripeColor;
+    var statusColor, statusTxt, badgeBg, stripeColor, borderColor;
     var unitYM = (u.start_date||'').slice(0,7);
     var isNewThisMonth = unitYM === activeYM;
     // لو المستأجر دخل بعد الشهر المختار — مكانش موجود في الشهر ده
@@ -249,45 +249,45 @@ function renderUnits(units, paidMap) {
 
     if(u.is_vacant || u.unit_status === 'available') {
       statusColor='var(--muted)'; statusTxt=LANG==='ar'?'🏠 شاغرة':'🏠 Vacant';
-      badgeBg='var(--surf2)'; stripeColor='var(--border)';
+      badgeBg='var(--surf2)'; stripeColor='var(--border)'; borderColor='var(--border)';
     } else if(isMaintenance) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'🔧 صيانة':'🔧 Maint.';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
     } else if(isReserved) {
       statusColor='var(--purple)'; statusTxt=LANG==='ar'?'🔖 محجوز':'🔖 Reserved';
-      badgeBg='rgba(167,139,245,.1)'; stripeColor='var(--purple)';
+      badgeBg='rgba(167,139,245,.1)'; stripeColor='var(--purple)'; borderColor='var(--border)';
     } else if(u._isFormerTenant) {
       // مستأجر سابق — كان ساكن في الشهر المختار وغادر
       var paidFmr = paidMap[u.id]||0;
       if(paidFmr >= (u.monthly_rent||1) && u.monthly_rent > 0) {
         statusColor='var(--green)'; statusTxt=LANG==='ar'?'👋 غادر/مدفوع':'👋 Left/Paid';
-        badgeBg='var(--green-bg)'; stripeColor='var(--green)';
+        badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)55';
       } else if(paidFmr > 0) {
         statusColor='var(--amber)'; statusTxt=LANG==='ar'?'👋 غادر/جزئي':'👋 Left/Partial';
-        badgeBg='var(--amber-bg)'; stripeColor='var(--amber)';
+        badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
       } else {
         statusColor='var(--muted)'; statusTxt=LANG==='ar'?'👋 غادر':'👋 Left';
-        badgeBg='var(--surf3)'; stripeColor='var(--muted)';
+        badgeBg='var(--surf3)'; stripeColor='var(--muted)'; borderColor='var(--border)';
       }
     } else if(joinedAfterMonth) {
       // المستأجر دخل بعد الشهر المختار — مش موجود في هذا الشهر
       statusColor='var(--muted)'; statusTxt=LANG==='ar'?'⏭️ لم يكن هنا':'⏭️ Not Yet';
-      badgeBg='var(--surf3)'; stripeColor='var(--muted)';
+      badgeBg='var(--surf3)'; stripeColor='var(--muted)'; borderColor='var(--border)';
     } else if(isLeaving) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'📤 مغادر':'📤 Leaving';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
     } else if(isNewThisMonth && paid === 0) {
       statusColor='var(--accent)'; statusTxt=LANG==='ar'?'🆕 جديد':'🆕 New';
-      badgeBg='var(--accent-glow)'; stripeColor='var(--accent)';
+      badgeBg='var(--accent-glow)'; stripeColor='var(--accent)'; borderColor='var(--border)';
     } else if(paid >= rent && rent > 0) {
       statusColor='var(--green)'; statusTxt=LANG==='ar'?'✓ مدفوع':'✓ Paid';
-      badgeBg='var(--green-bg)'; stripeColor='var(--green)';
+      badgeBg='var(--green-bg)'; stripeColor='var(--green)'; borderColor='var(--green)55';
     } else if(paid > 0) {
       statusColor='var(--amber)'; statusTxt=LANG==='ar'?'◑ جزئي':'◑ Partial';
-      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)';
+      badgeBg='var(--amber-bg)'; stripeColor='var(--amber)'; borderColor='var(--amber)55';
     } else {
       statusColor='var(--red)'; statusTxt=LANG==='ar'?'✕ لم يدفع':'✕ Unpaid';
-      badgeBg='var(--red-bg)'; stripeColor='var(--red)';
+      badgeBg='var(--red-bg)'; stripeColor='var(--red)'; borderColor='var(--red)55';
     }
 
     var _disc = window._discountMapCache ? (window._discountMapCache[u.id]||0) : 0;
@@ -301,7 +301,7 @@ function renderUnits(units, paidMap) {
       : '';
     var aptLabel = 'شقة '+escapeHtml(u.apartment)+' · '+escapeHtml(u.room);
 
-    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1px solid var(--border);border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);cursor:pointer;transition:box-shadow .15s,transform .1s;touch-action:manipulation">'
+    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+borderColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);cursor:pointer;transition:box-shadow .15s,transform .1s;touch-action:manipulation">'
       +'<div class="unit-wa-check" onclick="event.stopPropagation()" style="display:none;flex-shrink:0;align-items:center"><input type="checkbox" data-uid="'+u.id+'" onchange="updateWABar()" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer"></div>'
       +'<div style="min-width:42px;height:42px;border-radius:10px;background:var(--surf2);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0;border:1px solid var(--border)">'+escapeHtml(u.apartment)+'</div>'
       +'<div style="flex:1;min-width:0">'
