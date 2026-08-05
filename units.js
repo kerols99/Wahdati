@@ -301,16 +301,16 @@ function renderUnits(units, paidMap) {
       : '';
     var aptLabel = 'شقة '+escapeHtml(u.apartment)+' · '+escapeHtml(u.room);
 
-    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1.5px solid '+stripeColor+'40;border-right:3px solid '+stripeColor+';border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);box-shadow:0 2px 10px rgba(0,0,0,.2);cursor:pointer;transition:transform .12s,box-shadow .18s;touch-action:manipulation">'
+    return '<div class="unit-card" data-uid="'+u.id+'" data-phone="'+(u.phone||'')+'" data-name="'+escapeHtml(u.tenant_name||'')+'" data-apt="'+escapeHtml(u.apartment)+'" data-room="'+escapeHtml(u.room)+'" data-rent="'+rent+'" data-paid="'+paid+'" data-lang="'+((u.language||'ar').toLowerCase())+'" onclick="unitCardClick(event,this,'+u.id+')" style="border:1px solid var(--border);border-radius:16px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:11px;background:var(--surf);cursor:pointer;transition:box-shadow .15s,transform .1s;touch-action:manipulation">'
       +'<div class="unit-wa-check" onclick="event.stopPropagation()" style="display:none;flex-shrink:0;align-items:center"><input type="checkbox" data-uid="'+u.id+'" onchange="updateWABar()" style="width:18px;height:18px;accent-color:var(--green);cursor:pointer"></div>'
-      +'<div style="min-width:42px;height:42px;border-radius:12px;background:'+color+'20;color:'+color+';display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;flex-shrink:0">'+escapeHtml(u.apartment)+'</div>'
+      +'<div style="min-width:42px;height:42px;border-radius:10px;background:var(--surf2);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0;border:1px solid var(--border)">'+escapeHtml(u.apartment)+'</div>'
       +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:.68rem;color:var(--muted);margin-bottom:1px">'+aptLabel+'</div>'
         +'<div style="font-size:.88rem;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escapeHtml(u.tenant_name||'—')+'</div>'
         +(u.tenant_name2?'<div style="font-size:.68rem;color:var(--amber);font-weight:600">+ '+escapeHtml(u.tenant_name2)+'</div>':'')
         +paidHtml
       +'</div>'
-      +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">'        +'<div style="font-size:.7rem;font-weight:700;color:'+statusColor+'">'+statusTxt+'</div>'        +'<div style="font-size:.85rem;font-weight:700;color:var(--text)">'+(rent > 0 ? rent.toLocaleString()+' AED' : '—')+'</div>'        +remHtml      +'</div>'    +((!u.is_vacant && rem > 0)?'<button onclick="event.stopPropagation();quickPayUnit(\'' + u.apartment + '\',\'' + u.room + '\',' + rent + ')" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:var(--green);border:none;border-radius:10px;color:#fff;font-size:.9rem;cursor:pointer;flex-shrink:0;touch-action:manipulation">💰</button>':'')    +'</div>'; 
+      +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">'        +'<div style="font-size:.7rem;font-weight:700;color:'+statusColor+'">'+statusTxt+'</div>'        +'<div style="font-size:.85rem;font-weight:700;color:var(--text)">'+(rent > 0 ? rent.toLocaleString()+' AED' : '—')+'</div>'        +remHtml      +'</div>'    +((!u.is_vacant && rem > 0)?'<button onclick="event.stopPropagation();quickPayUnit(\'' + u.apartment + '\',\'' + u.room + '\',' + rent + ')" style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;background:var(--surf2);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:.9rem;cursor:pointer;flex-shrink:0;touch-action:manipulation">💰</button>':'')    +'</div>'; 
   }).join('');
   var el = document.getElementById('unitList');
   el.innerHTML = html || `<div style="text-align:center;padding:30px;color:var(--muted)">${LANG==='ar'?'لا توجد وحدات':'No units found'}</div>`;
@@ -482,7 +482,7 @@ var now = new Date();
     // Store values on window for button access (avoids iOS text-selection issue)
     window._qrd = {apt: unit.apartment, room: unit.room, amt: refDep, name: unit.tenant_name||'', startDate: unit.start_date||''};
     if(refDep > 0) {
-      depHTML = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'        +'<span style="font-size:.75rem;color:var(--amber);font-weight:600">🔒 تأمين مرجعي: <b>'+refDep+' AED</b></span>'        +'<span style="font-size:.65rem;color:var(--muted)">غير مسجّل رسمياً</span>'        +'</div>'        +'<button id="btn-quick-dep" type="button" '        +'style="display:block;width:100%;padding:13px;background:var(--amber);border:none;border-radius:12px;'        +'color:#fff;font-family:var(--font);font-size:.85rem;font-weight:700;cursor:pointer;'        +'touch-action:manipulation;-webkit-appearance:none;letter-spacing:.3px">'        +'🔒 تسجيل التأمين — '+refDep+' AED</button>'        +'</div>';
+      depHTML = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">'        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'        +'<span style="font-size:.75rem;color:var(--amber);font-weight:600">🔒 تأمين مرجعي: <b>'+refDep+' AED</b></span>'        +'<span style="font-size:.65rem;color:var(--muted)">غير مسجّل رسمياً</span>'        +'</div>'        +'<button id="btn-quick-dep" type="button" '        +'style="display:block;width:100%;padding:13px;background:var(--text);border:none;border-radius:999px;'        +'color:var(--bg);font-family:var(--font);font-size:.85rem;font-weight:600;cursor:pointer;'        +'touch-action:manipulation;-webkit-appearance:none;letter-spacing:0">'        +'🔒 تسجيل التأمين — '+refDep+' AED</button>'        +'</div>';
     } else {
       depHTML = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:.75rem;color:var(--muted)">🔒 '+(LANG==='ar'?'لا يوجد تأمين مسجّل':'No deposit recorded')+'</div>';
     }
@@ -554,8 +554,8 @@ var now = new Date();
     + '<button class="btn br" style="flex:1;font-size:.8rem" id="drawer-del-btn">🗑️ '+(LANG==='ar'?'حذف':'Delete')+'</button>'
     + '</div>'
     + '<button id="drawer-mark-depart-btn" style="width:100%;padding:11px;background:' + (scheduledDepart ? 'var(--amber)22' : 'var(--red)18') + ';border:1px solid ' + (scheduledDepart ? 'var(--amber)' : 'var(--red)') + ';border-radius:12px;color:' + (scheduledDepart ? 'var(--amber)' : 'var(--red)') + ';font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:8px">📤 ' + (scheduledDepart ? (LANG==='ar'?'مغادرة مسجلة':'Scheduled departure') : (LANG==='ar'?'تسجيل مغادرة آخر الشهر':'Mark departure at month end')) + '</button>'
-    + '<button id="drawer-contract-btn" style="width:100%;padding:11px;background:var(--accent)22;border:1px solid var(--accent);border-radius:12px;color:var(--accent);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px">📄 '+(LANG==='ar'?'إرسال العقد / PDF':'Contract / PDF')+'</button>'
-    + '<button id="drawer-daily-btn" style="width:100%;padding:11px;background:var(--purple)22;border:1px solid var(--purple);border-radius:12px;color:var(--purple);font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px">🗓️ '+(LANG==='ar'?'إيجار يومي':'Daily Rental')+'</button>'
+    + '<button id="drawer-contract-btn" style="width:100%;padding:12px;background:var(--surf2);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:.85rem;font-weight:500;cursor:pointer;font-family:inherit;margin-bottom:8px;text-align:center">📄 '+(LANG==='ar'?'إرسال العقد / PDF':'Contract / PDF')+'</button>'
+    + '<button id="drawer-daily-btn" style="width:100%;padding:12px;background:var(--surf2);border:1px solid var(--border);border-radius:999px;color:var(--text);font-size:.85rem;font-weight:500;cursor:pointer;font-family:inherit;margin-bottom:8px;text-align:center">🗓️ '+(LANG==='ar'?'إيجار يومي':'Daily Rental')+'</button>'
     + '<div id="daily-rental-form" style="display:none"></div>'
     + '<button id="drawer-hist-btn" style="width:100%;padding:11px;background:var(--surf2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer">📋 '+(LANG==='ar'?'سجل الدفعات':'Payment History')+'</button>'
     + '<div id="pay-history" style="display:none"></div>'
@@ -1013,8 +1013,8 @@ function openDailyRentalForm(unit) {
   btn.textContent = '✕ ' + (LANG==='ar'?'إغلاق':'Close');
 
   formEl.innerHTML =
-    '<div style="background:var(--surf2);border:1px solid var(--purple)44;border-radius:12px;padding:14px;margin-bottom:8px">'
-    + '<div style="font-size:.72rem;font-weight:700;color:var(--purple);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px">🗓️ '+(LANG==='ar'?'تسجيل إيجار يومي':'New Daily Rental')+'</div>'
+    '<div style="background:var(--surf2);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:8px">'
+    + '<div style="font-size:.72rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">🗓️ '+(LANG==='ar'?'تسجيل إيجار يومي':'New Daily Rental')+'</div>'
     + '<div style="margin-bottom:10px"><label style="font-size:.68rem;color:var(--muted);display:block;margin-bottom:4px">'+(LANG==='ar'?'اسم المستأجر':'Tenant Name')+'</label>'
     +   '<input id="dr-name" class="inp" style="height:42px" placeholder="'+(LANG==='ar'?'الاسم...':'Name...')+'"></div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">'
@@ -1031,9 +1031,9 @@ function openDailyRentalForm(unit) {
     + '</div>'
     + '<div style="background:var(--surf);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">'
     +   '<span style="font-size:.78rem;color:var(--muted)">'+(LANG==='ar'?'الإجمالي':'Total')+'</span>'
-    +   '<span id="dr-total" style="font-size:1.1rem;font-weight:800;color:var(--purple)">0 AED</span>'
+    +   '<span id="dr-total" style="font-size:1.1rem;font-weight:700;color:var(--text)">0 AED</span>'
     + '</div>'
-    + '<button onclick="saveDailyRental('+unit.id+',\''+unit.apartment+'\',\''+unit.room+'\')" style="width:100%;padding:13px;background:var(--purple);border:none;border-radius:12px;color:#fff;font-family:inherit;font-size:.88rem;font-weight:700;cursor:pointer">✅ '+(LANG==='ar'?'حفظ الإيجار اليومي':'Save Daily Rental')+'</button>'
+    + '<button onclick="saveDailyRental('+unit.id+',\''+unit.apartment+'\',\''+unit.room+'\')" style="width:100%;padding:13px;background:var(--text);border:none;border-radius:999px;color:var(--bg);font-family:inherit;font-size:.88rem;font-weight:600;cursor:pointer">✅ '+(LANG==='ar'?'حفظ الإيجار اليومي':'Save Daily Rental')+'</button>'
     + '</div>';
 }
 window.openDailyRentalForm = openDailyRentalForm;
@@ -1293,7 +1293,7 @@ window.buildWAQueueMsg = buildWAQueueMsg;
 function stopWAQueue() {
   window._waQueue = []; window._waQueueIdx = 0;
   var bar = document.getElementById('wa-send-bar');
-  if(bar) { bar.style.display='none'; bar.innerHTML='<span id="wa-selected-count" style="font-size:.82rem;font-weight:700;color:var(--green);flex:1">0 مختار</span><button onclick="selectAllUnpaid()" style="padding:6px 10px;background:var(--amber-bg);border:1px solid var(--amber);border-radius:8px;color:var(--amber);font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">⚠️ المتبقي</button><button onclick="sendBulkWA()" style="padding:6px 14px;background:#25D366;border:none;border-radius:8px;color:#fff;font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💬 إرسال</button>'; }
+  if(bar) { bar.style.display='none'; bar.innerHTML='<span id="wa-selected-count" style="font-size:.82rem;font-weight:700;color:var(--green);flex:1">0 مختار</span><button onclick="selectAllUnpaid()" style="padding:6px 10px;background:var(--surf2);border:1px solid var(--border);border-radius:999px;color:var(--text2);font-size:.72rem;font-weight:500;cursor:pointer;font-family:inherit;white-space:nowrap">⚠️ المتبقي</button><button onclick="sendBulkWA()" style="padding:6px 14px;background:var(--text);border:none;border-radius:999px;color:var(--bg);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">💬 إرسال</button>'; }
   toast('⏹️ تم إيقاف الإرسال','');
   if(_waSelectMode) toggleWASelectMode();
 }
@@ -1324,8 +1324,8 @@ function _waQueueBarProgress(sent, total) {
     +'<div style="background:var(--surf2);border-radius:4px;height:4px;margin-bottom:5px"><div style="background:var(--green);height:100%;width:'+(sent/total*100)+'%;border-radius:4px;transition:width .3s"></div></div>'
     +(next?'<div style="font-size:.72rem;color:var(--muted)">التالي: <b style="color:var(--text)">'+escapeHtml(next.name)+'</b></div>':'')
     +'</div>'
-    +'<button onclick="stopWAQueue()" style="padding:8px 12px;background:var(--red-bg);border:1px solid var(--red);border-radius:9px;color:var(--red);font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-left:6px">⏹️</button>'
-    +'<button onclick="sendNextWA()" style="padding:8px 16px;background:#25D366;border:none;border-radius:9px;color:#fff;font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-right:8px">'
+    +'<button onclick="stopWAQueue()" style="padding:8px 12px;background:var(--surf2);border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-left:6px">⏹️</button>'
+    +'<button onclick="sendNextWA()" style="padding:8px 16px;background:var(--text);border:none;border-radius:999px;color:var(--bg);font-size:.82rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;margin-right:8px">'
     +(sent<total?'💬 التالي ←':'✅ إنهاء')+'</button>';
 }
 

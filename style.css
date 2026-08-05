@@ -451,16 +451,18 @@ label {
 /* Uber category-button: canvas-soft pill */
 .filter-btn {
   height: 36px; padding: 0 var(--sp-lg);
-  border-radius: var(--radius-sm); /* pill */
+  border-radius: var(--radius-sm); /* pill 999px */
   border: 1px solid var(--border);
-  background: var(--surf2); color: var(--muted);
+  background: transparent; color: var(--muted);
   font-size: 14px; font-weight: 500; line-height: 16px;
   white-space: nowrap; cursor: pointer; font-family: var(--font);
   transition: all .15s; touch-action: manipulation;
 }
-/* Active: Uber: ink pill on light; white pill on dark */
+.filter-btn:hover { color: var(--text2); border-color: var(--border2); }
+/* Active: Uber — white pill on dark, ink pill on light */
 .filter-btn.active {
-  background: var(--text); border-color: var(--text); color: var(--bg);
+  background: var(--text); border-color: var(--text);
+  color: var(--bg); font-weight: 600;
 }
 
 .search-wrap { position: relative; margin-bottom: var(--sp-md); }
@@ -888,4 +890,50 @@ tr:hover td { background: var(--surf2); }
 .showcase-card .headline {
   font-size: 32px; font-weight: 700; line-height: 40px;
   color: var(--text); letter-spacing: 0;
+}
+
+/* ══ Unit card status accent — Uber minimal ══
+   Left accent bar only, no full colored border */
+.unit-card { position: relative; }
+.unit-card[data-status="paid"]::before    { content:''; position:absolute; right:0; top:16px; bottom:16px; width:3px; background:var(--green); border-radius:3px 0 0 3px; }
+.unit-card[data-status="partial"]::before { content:''; position:absolute; right:0; top:16px; bottom:16px; width:3px; background:var(--amber); border-radius:3px 0 0 3px; }
+.unit-card[data-status="unpaid"]::before  { content:''; position:absolute; right:0; top:16px; bottom:16px; width:3px; background:var(--red); border-radius:3px 0 0 3px; }
+
+/* ══ Drawer buttons — all Uber secondary style ══ */
+.drawer .btn, [id^="drawer-"] {
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+}
+
+/* ══ Topbar icbtn — round pill per Uber icon-button-circular ══ */
+.icbtn { border-radius: 999px; }
+
+/* ══ Report page buttons — Uber neutral ══ */
+.report-view-btn {
+  background: var(--surf2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 12px 24px; font-size: 16px; font-weight: 500;
+  font-family: var(--font); cursor: pointer; width: 100%;
+  margin-bottom: 8px; transition: background .15s;
+}
+.report-view-btn:hover { background: var(--surf3); }
+
+/* ══ Primary download btn — Uber white pill ══ */
+.btn-primary-dl {
+  background: var(--text); color: var(--bg);
+  border: none; border-radius: 999px;
+  padding: 12px 24px; font-size: 16px; font-weight: 600;
+  font-family: var(--font); cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-primary-dl:hover { opacity: .85; }
+
+/* ══ Section heading muted — Uber body color ══ */
+.section-sub { font-size: 14px; font-weight: 400; color: var(--muted); margin-top: 4px; }
+
+/* ══ Dark mode: fix any remaining orange/colored borders ══ */
+:root:not([data-theme="light"]) [style*="border: 1px solid var(--amber)"],
+:root:not([data-theme="light"]) [style*="border:1px solid var(--amber)"] {
+  border-color: var(--border) !important;
 }
