@@ -950,3 +950,10 @@ tr:hover td { background: var(--surf2); }
 [data-theme="light"] .unit-card[data-status="partial"] { border-color: #8c5700 !important; background: rgba(140,87,0,.02) !important; }
 [data-theme="light"] .unit-card[data-status="unpaid"]  { border-color: #c13515 !important; background: rgba(193,53,21,.02) !important; }
 [data-theme="light"] .unit-card[data-status="vacant"]  { border-color: #dddddd !important; }
+
+/* ══ Apt badge — clearer in light mode ══ */
+[data-theme="light"] .uapt {
+  background: #f2f2f2 !important;
+  border: 1.5px solid #c1c1c1 !important;
+  color: #222222 !important;
+}
