@@ -3654,3 +3654,331 @@ function exportTenantStatementPDF() {
 window.loadTenantStatement      = loadTenantStatement;
 window.exportTenantStatementPDF = exportTenantStatementPDF;
 
+
+// ══════════════════════════════════════════════════════
+//  تقرير المتبقيات الكاملة
+//  يشمل: حاليين + مغادرين + منقولين
+//  يحسب شهر بشهر من كل التاريخ
+// ══════════════════════════════════════════════════════
+
+var _arrearsData = []; // cache for filter
+
+async function loadArrearsReport(btn) {
+  var out = document.getElementById('rArrearsOut');
+  if(!out) return;
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري التحميل...'; }
+  out.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">⏳ جاري تحليل كل التاريخ...</div>';
+
+  try {
+    // ── 1. جلب البيانات ──
+    var [unitsRes, histRes, paymentsRes, transfersRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,phone,monthly_rent,deposit,start_date,is_vacant,unit_status,language').order('apartment').order('room'),
+      sb.from('unit_history').select('*').order('start_date'),
+      sb.from('rent_payments').select('id,unit_id,apartment,room,amount,payment_month,payment_date,notes').order('payment_month'),
+      sb.from('internal_transfers').select('*').order('transfer_date'),
+    ]);
+
+    var units     = unitsRes.data  || [];
+    var hist      = histRes.data   || [];
+    var payments  = paymentsRes.data || [];
+    var transfers = transfersRes.data || [];
+
+    // ── 2. بناء payments map: unit_id → {month → total_paid} ──
+    var payByUnit = {};
+    payments.forEach(function(p) {
+      var uid = String(p.unit_id);
+      var mon = (p.payment_month||'').slice(0,7); // YYYY-MM
+      if(!payByUnit[uid]) payByUnit[uid] = {};
+      payByUnit[uid][mon] = (payByUnit[uid][mon]||0) + Number(p.amount||0);
+    });
+
+    // Also build pay by apt+room for historical
+    var payByRoom = {};
+    payments.forEach(function(p) {
+      var key = p.apartment + '-' + p.room;
+      var mon = (p.payment_month||'').slice(0,7);
+      if(!payByRoom[key]) payByRoom[key] = {};
+      payByRoom[key][mon] = (payByRoom[key][mon]||0) + Number(p.amount||0);
+    });
+
+    // ── 3. Helper: حساب المتبقي الشهري ──
+    function calcMonthlyArrears(apt, room, unitId, startDate, endDate, monthlyRent) {
+      if(!startDate || !monthlyRent) return [];
+      var start = new Date(startDate);
+      var end   = endDate ? new Date(endDate) : new Date();
+      var result = [];
+      var cur = new Date(start.getFullYear(), start.getMonth(), 1);
+      var endMon = new Date(end.getFullYear(), end.getMonth(), 1);
+      var payMap = (unitId && payByUnit[String(unitId)]) || payByRoom[apt+'-'+room] || {};
+
+      while(cur <= endMon) {
+        var monStr = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0');
+        var paid   = payMap[monStr] || 0;
+        var due    = Number(monthlyRent);
+        var rem    = due - paid;
+        if(rem > 0) {
+          result.push({ month: monStr, due: due, paid: paid, remaining: rem });
+        }
+        cur.setMonth(cur.getMonth() + 1);
+      }
+      return result;
+    }
+
+    // ── 4. بناء قائمة الأشخاص مع متبقياتهم ──
+    var people = [];
+
+    // أ) المستأجرون الحاليون
+    units.forEach(function(u) {
+      if(u.is_vacant || !u.tenant_name || !u.monthly_rent) return;
+      var arrears = calcMonthlyArrears(u.apartment, u.room, u.id, u.start_date, null, u.monthly_rent);
+      var total = arrears.reduce(function(s,a){return s+a.remaining;},0);
+      if(total <= 0) return;
+      people.push({
+        type:       'current',
+        name:       u.tenant_name,
+        name2:      u.tenant_name2 || '',
+        apt:        u.apartment,
+        room:       u.room,
+        unitId:     u.id,
+        phone:      u.phone || '',
+        deposit:    u.deposit || 0,
+        startDate:  u.start_date,
+        endDate:    null,
+        rent:       u.monthly_rent,
+        total:      total,
+        arrears:    arrears,
+        transferNote: '',
+      });
+    });
+
+    // ب) المغادرون (من unit_history)
+    var departed = hist.filter(function(h) {
+      return h.snapshot_type === 'departure' && h.tenant_name && h.monthly_rent;
+    });
+
+    departed.forEach(function(h) {
+      var arrears = calcMonthlyArrears(h.apartment, h.room, null, h.start_date, h.end_date, h.monthly_rent);
+      var total = arrears.reduce(function(s,a){return s+a.remaining;},0);
+      // اطرح التأمين لو موجود
+      var depositDeduct = Math.min(Number(h.deposit||0), total);
+      var netTotal = total - depositDeduct;
+      if(netTotal <= 0) return;
+      people.push({
+        type:        'departed',
+        name:        h.tenant_name,
+        name2:       h.tenant_name2 || '',
+        apt:         h.apartment,
+        room:        h.room,
+        unitId:      h.unit_id,
+        phone:       h.phone || '',
+        deposit:     h.deposit || 0,
+        depositDeduct: depositDeduct,
+        startDate:   h.start_date,
+        endDate:     h.end_date,
+        rent:        h.monthly_rent,
+        total:       netTotal,
+        grossTotal:  total,
+        arrears:     arrears,
+        transferNote: '',
+      });
+    });
+
+    // ج) المنقولون — لو عليهم متبقي في الوحدة القديمة
+    var transferOuts = hist.filter(function(h) {
+      return h.snapshot_type === 'internal_transfer_out' && h.tenant_name && h.monthly_rent;
+    });
+
+    transferOuts.forEach(function(h) {
+      var arrears = calcMonthlyArrears(h.apartment, h.room, null, h.start_date, h.end_date, h.monthly_rent);
+      var total = arrears.reduce(function(s,a){return s+a.remaining;},0);
+      if(total <= 0) return;
+
+      // ابحث عن الوحدة الجديدة
+      var transfer = transfers.find(function(t) {
+        return String(t.from_unit_id) === String(h.unit_id) &&
+               t.transfer_date && t.transfer_date.slice(0,10) === (h.end_date||'').slice(0,10);
+      });
+      var newUnit = transfer ? units.find(function(u){return String(u.id)===String(transfer.to_unit_id);}) : null;
+
+      // هل هو لسه في النظام كمستأجر حالي؟
+      var isCurrent = newUnit && newUnit.tenant_name &&
+        newUnit.tenant_name.toLowerCase() === h.tenant_name.toLowerCase();
+
+      people.push({
+        type:        'transferred',
+        name:        h.tenant_name,
+        name2:       h.tenant_name2 || '',
+        apt:         h.apartment,
+        room:        h.room,
+        unitId:      h.unit_id,
+        phone:       h.phone || '',
+        deposit:     h.deposit || 0,
+        startDate:   h.start_date,
+        endDate:     h.end_date,
+        rent:        h.monthly_rent,
+        total:       total,
+        arrears:     arrears,
+        newApt:      newUnit ? newUnit.apartment : '',
+        newRoom:     newUnit ? newUnit.room : '',
+        newUnitId:   newUnit ? newUnit.id : '',
+        isCurrent:   isCurrent,
+        transferNote: transfer ? ('نُقل إلى ' + (newUnit ? 'شقة '+newUnit.apartment+' غرفة '+newUnit.room : '—') + ' بتاريخ ' + (transfer.transfer_date||'').slice(0,10)) : '',
+      });
+    });
+
+    // ── 5. ترتيب: الأعلى متبقياً أولاً ──
+    people.sort(function(a,b){ return b.total - a.total; });
+    _arrearsData = people;
+
+    renderArrearsReport(people, 'all');
+
+  } catch(e) {
+    out.innerHTML = '<div style="color:var(--red);padding:16px">خطأ: ' + e.message + '</div>';
+    console.error('loadArrearsReport:', e);
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = '⚠️ تحميل المتبقيات'; }
+  }
+}
+window.loadArrearsReport = loadArrearsReport;
+
+// ── Render ──
+function renderArrearsReport(people, filter) {
+  var out = document.getElementById('rArrearsOut');
+  if(!out) return;
+
+  var filtered = filter === 'all' ? people : people.filter(function(p){ return p.type === filter; });
+
+  if(!filtered.length) {
+    out.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted)">✅ لا توجد متبقيات</div>';
+    return;
+  }
+
+  var totalAll = filtered.reduce(function(s,p){ return s+p.total; }, 0);
+
+  var html = '';
+
+  // ── Summary banner ──
+  html += '<div style="background:var(--red-bg);border:1px solid var(--red)44;border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">';
+  html += '<div><div style="font-size:.72rem;color:var(--muted)">' + filtered.length + ' شخص</div><div style="font-size:.72rem;color:var(--muted)">إجمالي المتبقيات</div></div>';
+  html += '<div style="font-size:1.4rem;font-weight:800;color:var(--red)">' + totalAll.toLocaleString() + ' AED</div>';
+  html += '</div>';
+
+  // ── Cards ──
+  filtered.forEach(function(p, idx) {
+    var typeLabel = p.type === 'current' ? '🏠 حالي' : p.type === 'departed' ? '📤 مغادر' : '🔄 منقول';
+    var typeBg    = p.type === 'current' ? 'var(--green-bg)' : p.type === 'departed' ? 'var(--amber-bg)' : 'var(--accent-glow)';
+    var typeColor = p.type === 'current' ? 'var(--green)'    : p.type === 'departed' ? 'var(--amber)'    : 'var(--accent)';
+
+    html += '<div style="background:var(--surf);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden">';
+
+    // Card header
+    html += '<div style="padding:13px 14px;cursor:pointer;display:flex;align-items:center;gap:12px" onclick="toggleArrearsDetail(' + idx + ',this)">';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">';
+    html += '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:9999px;background:' + typeBg + ';color:' + typeColor + '">' + typeLabel + '</span>';
+    if(p.type === 'transferred' && p.transferNote) {
+      html += '<span style="font-size:10px;color:var(--muted)">' + p.transferNote + '</span>';
+    }
+    html += '</div>';
+    html += '<div style="font-size:15px;font-weight:700;color:var(--text)">' + escapeHtml(p.name) + (p.name2?' & '+escapeHtml(p.name2):'') + '</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">شقة ' + p.apt + ' — غرفة ' + p.room;
+    if(p.startDate) html += ' · دخل ' + p.startDate.slice(0,10);
+    if(p.endDate)   html += ' · خرج ' + p.endDate.slice(0,10);
+    html += '</div>';
+    if(p.type === 'departed' && p.deposit > 0) {
+      html += '<div style="font-size:10px;color:var(--muted);margin-top:2px">🔒 تأمين: ' + p.deposit.toLocaleString() + ' AED';
+      if(p.depositDeduct > 0) html += ' <span style="color:var(--green)">(-' + p.depositDeduct.toLocaleString() + ' AED مخصوم)</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div style="text-align:left;flex-shrink:0">';
+    html += '<div style="font-size:18px;font-weight:800;color:var(--red);">' + p.total.toLocaleString() + '</div>';
+    html += '<div style="font-size:10px;color:var(--muted);text-align:center">AED</div>';
+    html += '<div style="font-size:10px;color:var(--muted);text-align:center">▼ تفاصيل</div>';
+    html += '</div>';
+    html += '</div>';
+
+    // Monthly breakdown (hidden by default)
+    html += '<div id="arrears-detail-' + idx + '" style="display:none;border-top:1px solid var(--border)">';
+    html += '<div style="padding:8px 14px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em">تفاصيل الشهور المتأخرة</div>';
+    p.arrears.forEach(function(a) {
+      var monthNames = {
+        '01':'يناير','02':'فبراير','03':'مارس','04':'أبريل',
+        '05':'مايو','06':'يونيو','07':'يوليو','08':'أغسطس',
+        '09':'سبتمبر','10':'أكتوبر','11':'نوفمبر','12':'ديسمبر'
+      };
+      var parts = a.month.split('-');
+      var label = (monthNames[parts[1]] || parts[1]) + ' ' + parts[0];
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid var(--border)">';
+      html += '<div>';
+      html += '<div style="font-size:13px;font-weight:600;color:var(--text)">' + label + '</div>';
+      html += '<div style="font-size:11px;color:var(--muted)">مستحق: ' + a.due.toLocaleString() + ' · مدفوع: ' + (a.paid||0).toLocaleString() + '</div>';
+      html += '</div>';
+      html += '<div style="font-size:14px;font-weight:700;color:var(--red)">' + a.remaining.toLocaleString() + ' AED</div>';
+      html += '</div>';
+    });
+    // WhatsApp reminder button
+    if(p.phone) {
+      var phone = String(p.phone).replace(/\D/g,'');
+      if(phone.startsWith('0')) phone = '971'+phone.slice(1);
+      var msg = 'عزيزي/تي ' + p.name + '،\nتذكير بالمبالغ المتبقية:\n';
+      p.arrears.forEach(function(a){
+        var parts = a.month.split('-');
+        var mn = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+        msg += '• ' + (mn[Number(parts[1])-1]||parts[1]) + ' ' + parts[0] + ': ' + a.remaining.toLocaleString() + ' AED\n';
+      });
+      msg += 'الإجمالي: ' + p.total.toLocaleString() + ' AED\nشكراً لكم.';
+      html += '<div style="padding:10px 14px">';
+      html += '<a href="https://wa.me/' + phone + '?text=' + encodeURIComponent(msg) + '" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;background:#25D366;border-radius:999px;color:#fff;font-weight:600;font-size:13px;text-decoration:none">💬 إرسال تذكير واتساب</a>';
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+
+  out.innerHTML = html;
+}
+window.renderArrearsReport = renderArrearsReport;
+
+function toggleArrearsDetail(idx, el) {
+  var detail = document.getElementById('arrears-detail-' + idx);
+  if(!detail) return;
+  var isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  var arrow = el.querySelector('[style*="▼"]') || el.querySelector('[style*="▲"]');
+  if(arrow) arrow.textContent = isOpen ? '▼ تفاصيل' : '▲ إخفاء';
+}
+window.toggleArrearsDetail = toggleArrearsDetail;
+
+function filterArrears(type, btn) {
+  document.querySelectorAll('[data-arr-filter]').forEach(function(b){ b.classList.remove('active'); });
+  if(btn) btn.classList.add('active');
+  renderArrearsReport(_arrearsData, type);
+}
+window.filterArrears = filterArrears;
+
+async function exportArrearsExcel() {
+  if(!_arrearsData.length) { toast('حمّل التقرير أولاً','err'); return; }
+  toast('⏳ جاري التصدير...','');
+  // Simple CSV export
+  var rows = [['النوع','الاسم','الشقة','الغرفة','تاريخ الدخول','تاريخ الخروج','الإيجار','التأمين','إجمالي المتبقي','الشهر','المستحق','المدفوع','المتبقي الشهري']];
+  _arrearsData.forEach(function(p) {
+    p.arrears.forEach(function(a) {
+      rows.push([
+        p.type==='current'?'حالي':p.type==='departed'?'مغادر':'منقول',
+        p.name, p.apt, p.room,
+        p.startDate||'', p.endDate||'',
+        p.rent, p.deposit, p.total,
+        a.month, a.due, a.paid||0, a.remaining
+      ]);
+    });
+  });
+  var csv = rows.map(function(r){return r.join(',');}).join('\n');
+  var blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href = url; a.download = 'arrears-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(url);
+  toast('✅ تم التصدير','ok');
+}
+window.exportArrearsExcel = exportArrearsExcel;

@@ -444,6 +444,7 @@
 <button class="tab" data-tab-target="rNewTenants" id="rtab-newt">🆕 مستأجرين جدد</button>
 <button class="tab" data-tab-target="rAccrualCash" id="rtab-accrualcash">📊 مقارنة الاستحقاق</button>
 <button class="tab" data-tab-target="rTenantStatement" id="rtab-stmt">🧾 كشف حساب</button>
+<button class="tab" data-tab-target="rArrears" id="rtab-arrears">⚠️ متبقيات</button>
 </div>
 <div class="tpanel" id="rDisc">
 <div style="background:var(--amber)12;border:1px solid var(--amber)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
@@ -520,6 +521,25 @@
 </div>
 <div id="rTenantStatementOut" style="margin-top:12px"></div>
 </div>
+
+<!-- ══ تقرير المتبقيات الكاملة ══ -->
+<div class="tpanel" id="rArrears">
+  <div style="background:var(--red-bg);border:1px solid var(--red)44;border-radius:10px;padding:9px 13px;margin-bottom:12px;font-size:.72rem;color:var(--muted)">
+    ⚠️ <b style="color:var(--red)">تقرير المتبقيات</b> — كل المبالغ غير المسددة (حاليين + مغادرين + منقولين)
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="btn bp" style="flex:1;min-width:140px" onclick="loadArrearsReport(this)">⚠️ تحميل المتبقيات</button>
+    <button class="btn bg" style="flex:1;min-width:140px" onclick="exportArrearsExcel()">📥 تصدير Excel</button>
+  </div>
+  <div id="rArrearsFilter" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="filter-btn active" data-arr-filter="all"  onclick="filterArrears('all',this)">الكل</button>
+    <button class="filter-btn" data-arr-filter="current"     onclick="filterArrears('current',this)">🏠 حاليين</button>
+    <button class="filter-btn" data-arr-filter="departed"    onclick="filterArrears('departed',this)">📤 مغادرين</button>
+    <button class="filter-btn" data-arr-filter="transferred" onclick="filterArrears('transferred',this)">🔄 منقولين</button>
+  </div>
+  <div id="rArrearsOut" style="margin-top:4px"></div>
+</div>
+
 <div class="tpanel" id="rAccrualCash">
 <div style="background:var(--accent)12;border:1px solid var(--accent)33;border-radius:10px;padding:7px 11px;margin-bottom:10px;font-size:.72rem;color:var(--muted)">
   📊 <b style="color:var(--accent)">مقارنة الاستحقاق والتحصيل الفعلي</b> — الفرق بين payment_month و payment_date
