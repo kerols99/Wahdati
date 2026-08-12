@@ -3669,6 +3669,12 @@ async function loadArrearsReport(btn) {
   if(btn) { btn.disabled = true; btn.textContent = '⏳ جاري التحميل...'; }
   out.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">⏳ جاري تحليل كل التاريخ...</div>';
 
+  // قراءة نطاق التواريخ
+  var fromVal = (document.getElementById('arrears-from')||{}).value || '';
+  var toVal   = (document.getElementById('arrears-to')||{}).value   || '';
+  var filterFrom = fromVal ? fromVal + '-01' : null; // YYYY-MM-DD
+  var filterTo   = toVal   ? toVal   + '-01' : null;
+
   try {
     // ── 1. جلب البيانات ──
     var [unitsRes, histRes, paymentsRes, transfersRes] = await Promise.all([
@@ -3701,11 +3707,17 @@ async function loadArrearsReport(btn) {
       payByRoom[key][mon] = (payByRoom[key][mon]||0) + Number(p.amount||0);
     });
 
-    // ── 3. Helper: حساب المتبقي الشهري ──
+    // ── 3. Helper: حساب المتبقي الشهري (مع فلتر التاريخ) ──
     function calcMonthlyArrears(apt, room, unitId, startDate, endDate, monthlyRent) {
       if(!startDate || !monthlyRent) return [];
       var start = new Date(startDate);
       var end   = endDate ? new Date(endDate) : new Date();
+
+      // تطبيق فلتر التاريخ
+      if(filterFrom) { var ff = new Date(filterFrom); if(ff > start) start = ff; }
+      if(filterTo)   { var ft = new Date(filterTo);   if(ft < end)   end   = ft; }
+      if(start > end) return [];
+
       var result = [];
       var cur = new Date(start.getFullYear(), start.getMonth(), 1);
       var endMon = new Date(end.getFullYear(), end.getMonth(), 1);
@@ -3859,7 +3871,12 @@ function renderArrearsReport(people, filter) {
 
   // ── Summary banner ──
   html += '<div style="background:var(--red-bg);border:1px solid var(--red)44;border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">';
-  html += '<div><div style="font-size:.72rem;color:var(--muted)">' + filtered.length + ' شخص</div><div style="font-size:.72rem;color:var(--muted)">إجمالي المتبقيات</div></div>';
+  html += '<div><div style="font-size:.72rem;color:var(--muted)">' + filtered.length + ' شخص</div>';
+  if(fromVal || toVal) {
+    var rangeLabel = (fromVal||'البداية') + ' ← ' + (toVal||'الآن');
+    html += '<div style="font-size:.72rem;color:var(--muted)">الفترة: ' + rangeLabel + '</div>';
+  }
+  html += '<div style="font-size:.72rem;color:var(--muted)">إجمالي المتبقيات</div></div>';
   html += '<div style="font-size:1.4rem;font-weight:800;color:var(--red)">' + totalAll.toLocaleString() + ' AED</div>';
   html += '</div>';
 

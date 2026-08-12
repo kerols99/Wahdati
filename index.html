@@ -531,6 +531,16 @@
     <button class="btn bp" style="flex:1;min-width:140px" onclick="loadArrearsReport(this)">⚠️ تحميل المتبقيات</button>
     <button class="btn bg" style="flex:1;min-width:140px" onclick="exportArrearsExcel()">📥 تصدير Excel</button>
   </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+    <div>
+      <label style="font-size:11px;color:var(--muted);margin-bottom:4px;display:block">من شهر</label>
+      <input class="inp" type="month" id="arrears-from" style="height:40px;font-size:13px">
+    </div>
+    <div>
+      <label style="font-size:11px;color:var(--muted);margin-bottom:4px;display:block">إلى شهر</label>
+      <input class="inp" type="month" id="arrears-to" style="height:40px;font-size:13px">
+    </div>
+  </div>
   <div id="rArrearsFilter" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
     <button class="filter-btn active" data-arr-filter="all"  onclick="filterArrears('all',this)">الكل</button>
     <button class="filter-btn" data-arr-filter="current"     onclick="filterArrears('current',this)">🏠 حاليين</button>
