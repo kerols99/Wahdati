@@ -3661,11 +3661,11 @@ window.exportTenantStatementPDF = exportTenantStatementPDF;
 //  يحسب شهر بشهر من كل التاريخ
 // ══════════════════════════════════════════════════════
 
-var _arrearsData = []; // cache for filter
-var _arrearsFromVal = '';
-var _arrearsToVal   = '';
-var _payByUnit = {};
-var _payByRoom = {};
+window._arrearsData   = [];
+window._arrearsFromVal = '';
+window._arrearsToVal   = '';
+window._payByUnit      = {};
+window._payByRoom      = {};
 
 async function loadArrearsReport(btn) {
   var out = document.getElementById('rArrearsOut');
@@ -3676,8 +3676,8 @@ async function loadArrearsReport(btn) {
   // قراءة نطاق التواريخ
   var fromVal = (document.getElementById('arrears-from')||{}).value || '';
   var toVal   = (document.getElementById('arrears-to')||{}).value   || '';
-  _arrearsFromVal = fromVal;
-  _arrearsToVal   = toVal;
+  window._arrearsFromVal = fromVal;
+  window._arrearsToVal   = toVal;
   var filterFrom = fromVal ? fromVal + '-01' : null;
   var filterTo   = toVal   ? toVal   + '-01' : null;
 
@@ -3696,8 +3696,8 @@ async function loadArrearsReport(btn) {
     var transfers = transfersRes.data || [];
 
     // ── 2. بناء payments map ──
-    var payByUnit = _payByUnit = {};
-    var payByRoom = _payByRoom = {};
+    var payByUnit = window._payByUnit = {};
+    var payByRoom = window._payByRoom = {};
     payments.forEach(function(p) {
       // الشهر — payment_month أولاً، بعدين payment_date
       var mon = ((p.payment_month||'').slice(0,7)) || ((p.payment_date||'').slice(0,7));
@@ -3736,8 +3736,8 @@ async function loadArrearsReport(btn) {
       var endMon = new Date(end.getFullYear(), end.getMonth(), 1);
       // استخدم payByUnit أولاً، بعدين payByRoom بصيغتين مختلفتين
       var payMap = {};
-      var _pu = (typeof payByUnit !== 'undefined' ? payByUnit : _payByUnit) || {};
-      var _pr = (typeof payByRoom !== 'undefined' ? payByRoom : _payByRoom) || {};
+      var _pu = (typeof payByUnit !== 'undefined' ? payByUnit : window._payByUnit) || {};
+      var _pr = (typeof payByRoom !== 'undefined' ? payByRoom : window._payByRoom) || {};
       if(unitId && _pu[String(unitId)]) {
         payMap = _pu[String(unitId)];
       } else {
@@ -3863,7 +3863,7 @@ async function loadArrearsReport(btn) {
 
     // ── 5. ترتيب: الأعلى متبقياً أولاً ──
     people.sort(function(a,b){ return b.total - a.total; });
-    _arrearsData = people;
+    window._arrearsData = people;
 
     renderArrearsReport(people, 'all');
 
@@ -3883,8 +3883,8 @@ function renderArrearsReport(people, filter) {
 
   var filtered = filter === 'all' ? people : people.filter(function(p){ return p.type === filter; });
 
-  var fromVal = _arrearsFromVal;
-  var toVal   = _arrearsToVal;
+  var fromVal = window._arrearsFromVal;
+  var toVal   = window._arrearsToVal;
   if(!filtered.length) {
     out.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted)">✅ لا توجد متبقيات</div>';
     return;
@@ -3995,16 +3995,16 @@ window.toggleArrearsDetail = toggleArrearsDetail;
 function filterArrears(type, btn) {
   document.querySelectorAll('[data-arr-filter]').forEach(function(b){ b.classList.remove('active'); });
   if(btn) btn.classList.add('active');
-  renderArrearsReport(_arrearsData, type);
+  renderArrearsReport(window._arrearsData, type);
 }
 window.filterArrears = filterArrears;
 
 async function exportArrearsExcel() {
-  if(!_arrearsData.length) { toast('حمّل التقرير أولاً','err'); return; }
+  if(!window._arrearsData.length) { toast('حمّل التقرير أولاً','err'); return; }
   toast('⏳ جاري التصدير...','');
   // Simple CSV export
   var rows = [['النوع','الاسم','الشقة','الغرفة','تاريخ الدخول','تاريخ الخروج','الإيجار','التأمين','إجمالي المتبقي','الشهر','المستحق','المدفوع','المتبقي الشهري']];
-  _arrearsData.forEach(function(p) {
+  window._arrearsData.forEach(function(p) {
     p.arrears.forEach(function(a) {
       rows.push([
         p.type==='current'?'حالي':p.type==='departed'?'مغادر':'منقول',
