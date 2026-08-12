@@ -3662,6 +3662,8 @@ window.exportTenantStatementPDF = exportTenantStatementPDF;
 // ══════════════════════════════════════════════════════
 
 var _arrearsData = []; // cache for filter
+var _arrearsFromVal = '';
+var _arrearsToVal   = '';
 
 async function loadArrearsReport(btn) {
   var out = document.getElementById('rArrearsOut');
@@ -3672,7 +3674,9 @@ async function loadArrearsReport(btn) {
   // قراءة نطاق التواريخ
   var fromVal = (document.getElementById('arrears-from')||{}).value || '';
   var toVal   = (document.getElementById('arrears-to')||{}).value   || '';
-  var filterFrom = fromVal ? fromVal + '-01' : null; // YYYY-MM-DD
+  _arrearsFromVal = fromVal;
+  _arrearsToVal   = toVal;
+  var filterFrom = fromVal ? fromVal + '-01' : null;
   var filterTo   = toVal   ? toVal   + '-01' : null;
 
   try {
@@ -3860,6 +3864,8 @@ function renderArrearsReport(people, filter) {
 
   var filtered = filter === 'all' ? people : people.filter(function(p){ return p.type === filter; });
 
+  var fromVal = _arrearsFromVal;
+  var toVal   = _arrearsToVal;
   if(!filtered.length) {
     out.innerHTML = '<div style="text-align:center;padding:32px;color:var(--muted)">✅ لا توجد متبقيات</div>';
     return;
