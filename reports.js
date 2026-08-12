@@ -3693,22 +3693,30 @@ async function loadArrearsReport(btn) {
     var payments  = paymentsRes.data || [];
     var transfers = transfersRes.data || [];
 
-    // ── 2. بناء payments map: unit_id → {month → total_paid} ──
+    // ── 2. بناء payments map ──
+    // نستخدم payment_month أولاً، وlو مش موجود نستخدم payment_date كـ fallback
     var payByUnit = {};
-    payments.forEach(function(p) {
-      var uid = String(p.unit_id);
-      var mon = (p.payment_month||'').slice(0,7); // YYYY-MM
-      if(!payByUnit[uid]) payByUnit[uid] = {};
-      payByUnit[uid][mon] = (payByUnit[uid][mon]||0) + Number(p.amount||0);
-    });
-
-    // Also build pay by apt+room for historical
     var payByRoom = {};
     payments.forEach(function(p) {
-      var key = p.apartment + '-' + p.room;
-      var mon = (p.payment_month||'').slice(0,7);
-      if(!payByRoom[key]) payByRoom[key] = {};
-      payByRoom[key][mon] = (payByRoom[key][mon]||0) + Number(p.amount||0);
+      // الشهر — payment_month أولاً، بعدين payment_date
+      var mon = ((p.payment_month||'').slice(0,7)) || ((p.payment_date||'').slice(0,7));
+      if(!mon) return;
+      var amount = Number(p.amount||0);
+      if(!amount) return;
+
+      // Map بالـ unit_id
+      if(p.unit_id) {
+        var uid = String(p.unit_id);
+        if(!payByUnit[uid]) payByUnit[uid] = {};
+        payByUnit[uid][mon] = (payByUnit[uid][mon]||0) + amount;
+      }
+
+      // Map بالـ apt+room (للتاريخي)
+      if(p.apartment && p.room) {
+        var key = String(p.apartment) + '-' + String(p.room);
+        if(!payByRoom[key]) payByRoom[key] = {};
+        payByRoom[key][mon] = (payByRoom[key][mon]||0) + amount;
+      }
     });
 
     // ── 3. Helper: حساب المتبقي الشهري (مع فلتر التاريخ) ──
@@ -3725,7 +3733,16 @@ async function loadArrearsReport(btn) {
       var result = [];
       var cur = new Date(start.getFullYear(), start.getMonth(), 1);
       var endMon = new Date(end.getFullYear(), end.getMonth(), 1);
-      var payMap = (unitId && payByUnit[String(unitId)]) || payByRoom[apt+'-'+room] || {};
+      // استخدم payByUnit أولاً، بعدين payByRoom بصيغتين مختلفتين
+      var payMap = {};
+      if(unitId && payByUnit[String(unitId)]) {
+        payMap = payByUnit[String(unitId)];
+      } else {
+        // جرّب الـ key بصيغتين
+        var key1 = String(apt) + '-' + String(room);
+        var key2 = Number(apt) + '-' + String(room);
+        payMap = payByRoom[key1] || payByRoom[key2] || {};
+      }
 
       while(cur <= endMon) {
         var monStr = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0');
