@@ -3664,6 +3664,8 @@ window.exportTenantStatementPDF = exportTenantStatementPDF;
 var _arrearsData = []; // cache for filter
 var _arrearsFromVal = '';
 var _arrearsToVal   = '';
+var _payByUnit = {};
+var _payByRoom = {};
 
 async function loadArrearsReport(btn) {
   var out = document.getElementById('rArrearsOut');
@@ -3694,9 +3696,8 @@ async function loadArrearsReport(btn) {
     var transfers = transfersRes.data || [];
 
     // ── 2. بناء payments map ──
-    // نستخدم payment_month أولاً، وlو مش موجود نستخدم payment_date كـ fallback
-    var payByUnit = {};
-    var payByRoom = {};
+    var payByUnit = _payByUnit = {};
+    var payByRoom = _payByRoom = {};
     payments.forEach(function(p) {
       // الشهر — payment_month أولاً، بعدين payment_date
       var mon = ((p.payment_month||'').slice(0,7)) || ((p.payment_date||'').slice(0,7));
@@ -3735,13 +3736,14 @@ async function loadArrearsReport(btn) {
       var endMon = new Date(end.getFullYear(), end.getMonth(), 1);
       // استخدم payByUnit أولاً، بعدين payByRoom بصيغتين مختلفتين
       var payMap = {};
-      if(unitId && payByUnit[String(unitId)]) {
-        payMap = payByUnit[String(unitId)];
+      var _pu = (typeof payByUnit !== 'undefined' ? payByUnit : _payByUnit) || {};
+      var _pr = (typeof payByRoom !== 'undefined' ? payByRoom : _payByRoom) || {};
+      if(unitId && _pu[String(unitId)]) {
+        payMap = _pu[String(unitId)];
       } else {
-        // جرّب الـ key بصيغتين
         var key1 = String(apt) + '-' + String(room);
         var key2 = Number(apt) + '-' + String(room);
-        payMap = payByRoom[key1] || payByRoom[key2] || {};
+        payMap = _pr[key1] || _pr[key2] || {};
       }
 
       while(cur <= endMon) {
