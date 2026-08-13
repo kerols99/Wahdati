@@ -311,7 +311,7 @@ async function loadMonthly(btn) {
       // Pending future bookings for this month
       sb.from('moves').select('unit_id,new_tenant_name,tenant_name,new_start_date,move_date,new_rent,status').eq('type','arrive').eq('status','pending'),
       // Deposits received this month
-      sb.from('deposits').select('unit_id,amount,refund_amount,deposit_received_date,status,refund_date,tenant_name,apartment,room')
+      sb.from('deposits').select('unit_id,amount,refund_amount,deposit_received_date,status,refund_date,tenant_name,apartment,room,moved_from_unit_id,moved_date')
         .gte('deposit_received_date', monStart).lte('deposit_received_date', monEnd),
       // Refunded deposits this month — by refund_date
       sb.from('deposits').select('unit_id,amount,refund_amount,refund_date,tenant_name,apartment,room')
