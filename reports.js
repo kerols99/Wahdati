@@ -3667,6 +3667,25 @@ window._arrearsToVal   = '';
 window._payByUnit      = {};
 window._payByRoom      = {};
 
+// ── Helper: جلب كل الصفوف بدون حد الـ 1000 الافتراضي ──
+async function fetchAllRows(table, columns, orderCol) {
+  var all = [];
+  var pageSize = 1000;
+  var from = 0;
+  while(true) {
+    var q = sb.from(table).select(columns).range(from, from + pageSize - 1);
+    if(orderCol) q = q.order(orderCol);
+    var { data, error } = await q;
+    if(error) { console.error('fetchAllRows error:', error); break; }
+    if(!data || !data.length) break;
+    all = all.concat(data);
+    if(data.length < pageSize) break; // آخر صفحة
+    from += pageSize;
+  }
+  return all;
+}
+window.fetchAllRows = fetchAllRows;
+
 async function loadArrearsReport(btn) {
   var out = document.getElementById('rArrearsOut');
   if(!out) return;
@@ -3682,18 +3701,77 @@ async function loadArrearsReport(btn) {
   var filterTo   = toVal   ? toVal   + '-01' : null;
 
   try {
-    // ── 1. جلب البيانات ──
-    var [unitsRes, histRes, paymentsRes, transfersRes] = await Promise.all([
-      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,phone,monthly_rent,deposit,start_date,is_vacant,unit_status,language').order('apartment').order('room'),
+    // ── 1. جلب البيانات (مع pagination كاملة للدفعات) ──
+    var [unitsRes, histRes, paymentsArr, transfersRes, discountsRes, adjustmentsRes] = await Promise.all([
+      sb.from('units').select('id,apartment,room,tenant_name,tenant_name2,phone,monthly_rent,deposit,start_date,is_vacant,unit_status,language,first_month_rent').order('apartment').order('room'),
       sb.from('unit_history').select('*').order('start_date'),
-      sb.from('rent_payments').select('id,unit_id,apartment,room,amount,payment_month,payment_date,notes').order('payment_month'),
+      fetchAllRows('rent_payments', 'id,unit_id,apartment,room,amount,payment_month,payment_date,notes'),
       sb.from('internal_transfers').select('*').order('transfer_date'),
+      sb.from('unit_discounts').select('*'),
+      sb.from('rent_adjustments').select('*'),
     ]);
 
-    var units     = unitsRes.data  || [];
-    var hist      = histRes.data   || [];
-    var payments  = paymentsRes.data || [];
-    var transfers = transfersRes.data || [];
+    var units       = unitsRes.data  || [];
+    var hist        = histRes.data   || [];
+    var payments    = paymentsArr    || [];
+    var transfers   = transfersRes.data || [];
+    var discounts   = discountsRes.data || [];
+    var adjustments = adjustmentsRes.data || [];
+
+    // ── بناء discountsByUnit: unit_id → [{start,end,amount}] ──
+    var discByUnit = {};
+    discounts.forEach(function(d) {
+      if(!d.unit_id) return;
+      var uid = String(d.unit_id);
+      if(!discByUnit[uid]) discByUnit[uid] = [];
+      discByUnit[uid].push({
+        start: d.start_date, end: d.end_date, amount: Number(d.discount_amount||0)
+      });
+    });
+
+    // ── بناء adjustmentsByUnit: unit_id → {month → {type, amount}} ──
+    var adjByUnit = {};
+    adjustments.forEach(function(a) {
+      if(!a.unit_id || !a.month) return;
+      var uid = String(a.unit_id);
+      var mon = String(a.month).slice(0,7);
+      if(!adjByUnit[uid]) adjByUnit[uid] = {};
+      adjByUnit[uid][mon] = { type: a.adjustment_type, amount: Number(a.amount||0) };
+    });
+
+    // ── Helper: الإيجار الفعلي لشهر معين مع الخصومات والتعديلات ──
+    function effectiveRentForMonth(baseRent, unitId, monStr, startDate, firstMonthRent) {
+      var uid = String(unitId);
+      var rent = Number(baseRent || 0);
+
+      // أول شهر بسعر مختلف؟
+      if(startDate && String(startDate).slice(0,7) === monStr && firstMonthRent) {
+        rent = Number(firstMonthRent);
+      }
+
+      // rent_adjustments لهذا الشهر بالذات
+      var adj = adjByUnit[uid] && adjByUnit[uid][monStr];
+      if(adj) {
+        if(adj.type === 'override')  rent = Math.max(0, adj.amount);
+        else if(adj.type === 'surcharge') rent = Math.max(0, rent + adj.amount);
+        else if(adj.type === 'discount')  rent = Math.max(0, rent - adj.amount);
+      }
+
+      // unit_discounts — خصم لو الشهر يقع بين start/end
+      var discList = discByUnit[uid] || [];
+      var monStart = monStr + '-01';
+      var monEndDate = new Date(monStr + '-01'); monEndDate.setMonth(monEndDate.getMonth()+1); monEndDate.setDate(0);
+      var monEnd = monEndDate.toISOString().slice(0,10);
+      discList.forEach(function(d) {
+        if(!d.start || !d.end) return;
+        // تطابق لو أي جزء من فترة الخصم يقع في الشهر
+        if(d.start <= monEnd && d.end >= monStart) {
+          rent = Math.max(0, rent - d.amount);
+        }
+      });
+
+      return rent;
+    }
 
     // ── 2. بناء payments map ──
     var payByUnit = window._payByUnit = {};
@@ -3720,7 +3798,10 @@ async function loadArrearsReport(btn) {
       }
     });
 
-    // ── 3. Helper: حساب المتبقي الشهري (مع فلتر التاريخ) ──
+    // ── 3. Helper: حساب المتبقي الشهري (مع فلتر التاريخ + خصومات/تعديلات) ──
+    var unitsById = {};
+    units.forEach(function(u){ unitsById[String(u.id)] = u; });
+
     function calcMonthlyArrears(apt, room, unitId, startDate, endDate, monthlyRent) {
       if(!startDate || !monthlyRent) return [];
       var start = new Date(startDate);
@@ -3749,7 +3830,7 @@ async function loadArrearsReport(btn) {
       while(cur <= endMon) {
         var monStr = cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0');
         var paid   = payMap[monStr] || 0;
-        var due    = Number(monthlyRent);
+        var due    = effectiveRentForMonth(monthlyRent, unitId, monStr, startDate, unitsById[String(unitId)] ? unitsById[String(unitId)].first_month_rent : null);
         var rem    = due - paid;
         if(rem > 0) {
           result.push({ month: monStr, due: due, paid: paid, remaining: rem });
@@ -3792,7 +3873,7 @@ async function loadArrearsReport(btn) {
     });
 
     departed.forEach(function(h) {
-      var arrears = calcMonthlyArrears(h.apartment, h.room, null, h.start_date, h.end_date, h.monthly_rent);
+      var arrears = calcMonthlyArrears(h.apartment, h.room, h.unit_id, h.start_date, h.end_date, h.monthly_rent);
       var total = arrears.reduce(function(s,a){return s+a.remaining;},0);
       // اطرح التأمين لو موجود
       var depositDeduct = Math.min(Number(h.deposit||0), total);
@@ -3824,7 +3905,7 @@ async function loadArrearsReport(btn) {
     });
 
     transferOuts.forEach(function(h) {
-      var arrears = calcMonthlyArrears(h.apartment, h.room, null, h.start_date, h.end_date, h.monthly_rent);
+      var arrears = calcMonthlyArrears(h.apartment, h.room, h.unit_id, h.start_date, h.end_date, h.monthly_rent);
       var total = arrears.reduce(function(s,a){return s+a.remaining;},0);
       if(total <= 0) return;
 
