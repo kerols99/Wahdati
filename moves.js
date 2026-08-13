@@ -2004,9 +2004,10 @@ async function confirmScheduledTransfer(transferId, fromSnapshot, toSnapshot, fr
       notes: 'انتقل من شقة '+f.apartment+' غرفة '+f.room+' إلى شقة '+t.apartment+' غرفة '+t.room+' — '+date
     }).eq('id', fromId);
 
-    // Transfer deposit
+    // Transfer deposit — نحافظ على الوحدة الأصلية والتاريخ للتقارير القديمة
     await sb.from('deposits').update({
-      unit_id: toId, apartment: String(t.apartment), room: String(t.room)
+      unit_id: toId, apartment: String(t.apartment), room: String(t.room),
+      moved_from_unit_id: fromId, moved_date: date
     }).eq('unit_id', fromId).eq('status','held');
 
     // Update internal_transfers record (remove pending note)

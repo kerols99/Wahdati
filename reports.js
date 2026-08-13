@@ -70,6 +70,10 @@ function _pickDepositForReport(depRows, monYM) {
   return rows.reduce(function(s, d) {
     var rd = String(d.deposit_received_date || '').slice(0, 7);
     if(rd !== monYM) return s;
+    // قاعدة النقل الداخلي: التأمين المنقول يظهر بس في نطاقه الزمني الصح
+    // (قبل النقل تحت الوحدة القديمة، بعد النقل تحت الجديدة)
+    if(d._validUntil && monYM >= d._validUntil) return s; // بعد النقل — لا يُحسب على الوحدة القديمة
+    if(d._validFrom  && monYM <  d._validFrom)  return s; // قبل النقل — لا يُحسب على الوحدة الجديدة
     // Skip: departure process wrongly set deposit_received_date = refund_date
     var rdFull  = String(d.deposit_received_date || '').slice(0, 10);
     var refFull = String(d.refund_date || '').slice(0, 10);
@@ -379,10 +383,24 @@ async function loadMonthly(btn) {
     window._pdfData = { mon: mon, units: units, pays: paysRes.data||[], deps: depsRes.data||[], exps: expsRes.data||[], owns: ownsRes.data||[], discMap: discMap, adjustMap: adjustMap, refundedDeps: refundedDepsRes.data||[] };
 
     // depRawMap: all deposit rows per unit_id AND per apartment-room
+    // ── قاعدة النقل: لو التأمين انتقل من وحدة لوحدة (moved_from_unit_id + moved_date)،
+    //    يفضل يظهر تحت الوحدة القديمة للشهور اللي قبل تاريخ النقل،
+    //    وتحت الوحدة الجديدة للشهور من تاريخ النقل فصاعداً
     var depRawMap = {};
     var depRawMapByRoom = {};
     deps.forEach(function(d){
-      if(d.unit_id) {
+      if(d.moved_from_unit_id && d.moved_date) {
+        // له تاريخ نقل — نحطه في الاتنين مع علامة الحدود الزمنية
+        var movedMon = String(d.moved_date).slice(0,7);
+        // نسخة للوحدة القديمة (تظهر بس للشهور قبل موعد النقل)
+        var oldCopy = Object.assign({}, d, { _validUntil: movedMon, unit_id: d.moved_from_unit_id });
+        if(!depRawMap[d.moved_from_unit_id]) depRawMap[d.moved_from_unit_id]=[];
+        depRawMap[d.moved_from_unit_id].push(oldCopy);
+        // نسخة للوحدة الجديدة (تظهر بس من موعد النقل فصاعداً)
+        var newCopy = Object.assign({}, d, { _validFrom: movedMon });
+        if(!depRawMap[d.unit_id]) depRawMap[d.unit_id]=[];
+        depRawMap[d.unit_id].push(newCopy);
+      } else if(d.unit_id) {
         if(!depRawMap[d.unit_id]) depRawMap[d.unit_id]=[];
         depRawMap[d.unit_id].push(d);
       }
