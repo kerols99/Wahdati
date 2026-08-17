@@ -1046,6 +1046,10 @@ async function editDeposit(depId) {
     var { data: d } = await sb.from('deposits').select('*').eq('id', depId).single();
     if(!d) { toast(LANG==='ar'?'لم يتم العثور على التأمين':'Deposit not found','err'); return; }
 
+    // امسح أي modal قديم بنفس الـ ID قبل ما نفتح واحد جديد
+    var oldModal = document.getElementById('edit-dep-modal');
+    if(oldModal) oldModal.remove();
+
     var modal = document.createElement('div');
     modal.id = 'edit-dep-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;justify-content:center;padding:16px';
@@ -1744,6 +1748,11 @@ async function quickRefundDeposit(depId) {
   try {
     var { data: d } = await sb.from('deposits').select('*').eq('id', depId).single();
     if(!d) { toast(LANG==='ar'?'لم يتم العثور على التأمين':'Deposit not found','err'); return; }
+
+    // امسح أي modal قديم بنفس الـ ID قبل ما نفتح واحد جديد
+    var oldModal = document.getElementById('edit-dep-modal');
+    if(oldModal) oldModal.remove();
+
     var modal = document.createElement('div');
     modal.id = 'edit-dep-modal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:flex;align-items:flex-end;justify-content:center;padding:16px';
