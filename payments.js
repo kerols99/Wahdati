@@ -306,6 +306,118 @@ async function saveExp(btn) {
   finally{ btn.disabled=false; btn.innerHTML=orig; }
 }
 
+// ══════════════════════════════════════════════════════
+// إدخال مصروفات جماعي — نص متعدد الأسطر
+// ══════════════════════════════════════════════════════
+function toggleBulkExp() {
+  var bulkForm = document.getElementById('bulk-exp-form');
+  var regForm  = document.getElementById('regular-exp-form');
+  var btn      = document.getElementById('btn-bulk-exp-toggle');
+  var isOpen   = bulkForm.style.display !== 'none';
+
+  if(isOpen) {
+    bulkForm.style.display = 'none';
+    regForm.style.display  = 'block';
+    btn.textContent = '📋 إدخال جماعي';
+  } else {
+    bulkForm.style.display = 'block';
+    regForm.style.display  = 'none';
+    btn.textContent = '✏️ إدخال عادي';
+    // افتراضي: الشهر الحالي
+    var monEl = document.getElementById('be-month');
+    if(monEl && !monEl.value) monEl.value = (window.getActiveMonth ? getActiveMonth() : new Date().toISOString().slice(0,7));
+  }
+}
+window.toggleBulkExp = toggleBulkExp;
+
+// تحليل النص لسطور: الوصف [مسافات/تاب] المبلغ
+function parseBulkExpenseText(text) {
+  var lines = text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  var items = [];
+  lines.forEach(function(line) {
+    // آخر رقم في السطر = المبلغ، الباقي = الوصف
+    // يدعم فواصل الآلاف (1,948) ومسافات/تابات متعددة
+    var m = line.match(/^(.*?)[\s\t]+([\d,]+(?:\.\d+)?)\s*$/);
+    if(m) {
+      var desc = m[1].trim();
+      var amt  = Number(m[2].replace(/,/g,''));
+      if(desc && amt > 0) items.push({ desc: desc, amount: amt });
+    }
+  });
+  return items;
+}
+
+function renderBulkExpPreview() {
+  var text = document.getElementById('be-text').value;
+  var items = parseBulkExpenseText(text);
+  var preview = document.getElementById('bulk-exp-preview');
+  if(!preview) return;
+
+  if(!items.length) {
+    preview.innerHTML = '';
+    return;
+  }
+
+  var total = items.reduce(function(s,i){return s+i.amount;},0);
+  var html = '<div style="background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">';
+  html += '<div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:8px">تم التعرف على '+items.length+' مصروف — الإجمالي: '+total.toLocaleString()+' AED</div>';
+  items.forEach(function(it) {
+    html += '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.82rem">';
+    html += '<span>'+escapeHtml(it.desc)+'</span><span style="font-weight:700;color:var(--accent)">'+it.amount.toLocaleString()+' AED</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  preview.innerHTML = html;
+}
+window.renderBulkExpPreview = renderBulkExpPreview;
+
+async function saveBulkExpenses(btn) {
+  if(MY_ROLE==='collector'||MY_ROLE==='viewer'){toast(LANG==='ar'?'ليس لديك صلاحية':'No permission','err');return;}
+
+  var mon = document.getElementById('be-month').value;
+  var cat = document.getElementById('be-cat').value;
+  var text = document.getElementById('be-text').value;
+
+  if(!mon) { toast('اختر الشهر أولاً','err'); return; }
+
+  var items = parseBulkExpenseText(text);
+  if(!items.length) { toast('لم يتم التعرف على أي مصروف — تأكد من الصيغة','err'); return; }
+
+  var orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> جاري الحفظ...';
+
+  try {
+    var rows = items.map(function(it) {
+      return {
+        category: cat,
+        amount: it.amount,
+        period_month: mon + '-01',
+        description: it.desc,
+        receipt_no: null,
+      };
+    });
+
+    var { error } = await sb.from('expenses').insert(rows);
+    if(error) throw error;
+
+    var total = items.reduce(function(s,i){return s+i.amount;},0);
+    toast('✅ تم تسجيل '+items.length+' مصروف بإجمالي '+total.toLocaleString()+' AED', 'ok');
+
+    // reset
+    document.getElementById('be-text').value = '';
+    document.getElementById('bulk-exp-preview').innerHTML = '';
+
+  } catch(e) {
+    toast('خطأ: '+e.message, 'err');
+    console.error('saveBulkExpenses:', e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+window.saveBulkExpenses = saveBulkExpenses;
+
 async function calcOwnerBalance() {
   var monEl = document.getElementById('o-month');
   // Auto-fill current month if empty
@@ -404,6 +516,135 @@ async function saveOwner(btn) {
   } catch(e){ toast((LANG==='ar'?'خطأ: ':'Error: ')+e.message,'err'); }
   finally{ btn.disabled=false; btn.innerHTML=orig; }
 }
+
+// ══════════════════════════════════════════════════════
+// إدخال دفعات المالك جماعياً — نص متعدد الأسطر مع تاريخ لكل سطر
+// ══════════════════════════════════════════════════════
+function toggleBulkOwner() {
+  var bulkForm = document.getElementById('bulk-owner-form');
+  var regForm  = document.getElementById('regular-owner-form');
+  var btn      = document.getElementById('btn-bulk-owner-toggle');
+  var isOpen   = bulkForm.style.display !== 'none';
+
+  if(isOpen) {
+    bulkForm.style.display = 'none';
+    regForm.style.display  = 'block';
+    btn.textContent = '📋 إدخال جماعي';
+  } else {
+    bulkForm.style.display = 'block';
+    regForm.style.display  = 'none';
+    btn.textContent = '✏️ إدخال عادي';
+  }
+}
+window.toggleBulkOwner = toggleBulkOwner;
+
+// تحويل الأرقام العربية (٠١٢٣٤٥٦٧٨٩) لأرقام إنجليزية
+function convertArabicDigits(str) {
+  var map = {'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
+  return String(str).replace(/[٠-٩]/g, function(d){ return map[d]; });
+}
+
+// تحليل سطر: "اسم تاريخ" + مبلغ → {name, date, month, amount}
+function parseBulkOwnerLine(line) {
+  line = convertArabicDigits(line.trim());
+  // آخر رقم في السطر = المبلغ
+  var m = line.match(/^(.*?)[\s\t]+([\d,]+(?:\.\d+)?)\s*$/);
+  if(!m) return null;
+  var namePart = m[1].trim();
+  var amount   = Number(m[2].replace(/,/g,''));
+  if(!amount) return null;
+
+  // دور على تاريخ بصيغة D-M-YYYY أو DD-MM-YYYY داخل namePart
+  var dateMatch = namePart.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+  var date = null, month = null, name = namePart;
+
+  if(dateMatch) {
+    var day = dateMatch[1].padStart(2,'0');
+    var mo  = dateMatch[2].padStart(2,'0');
+    var yr  = dateMatch[3];
+    date  = yr + '-' + mo + '-' + day;
+    month = yr + '-' + mo + '-01';
+    name  = namePart.replace(dateMatch[0], '').trim();
+  }
+
+  return { name: name, date: date, month: month, amount: amount, raw: namePart };
+}
+
+function renderBulkOwnerPreview() {
+  var text = document.getElementById('bo-text').value;
+  var lines = text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  var items = lines.map(parseBulkOwnerLine).filter(Boolean);
+  var preview = document.getElementById('bulk-owner-preview');
+  if(!preview) return;
+
+  if(!items.length) { preview.innerHTML = ''; return; }
+
+  var total = items.reduce(function(s,i){return s+i.amount;},0);
+  var noDate = items.filter(function(i){return !i.date;}).length;
+
+  var html = '<div style="background:var(--surf2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px">';
+  html += '<div style="font-size:.75rem;font-weight:700;color:var(--muted);margin-bottom:8px">تم التعرف على '+items.length+' دفعة — الإجمالي: '+total.toLocaleString()+' AED</div>';
+  if(noDate > 0) {
+    html += '<div style="font-size:.72rem;color:var(--red);margin-bottom:8px">⚠️ '+noDate+' سطر بدون تاريخ واضح — سيُستخدم تاريخ اليوم</div>';
+  }
+  items.forEach(function(it) {
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:.8rem">';
+    html += '<span>'+escapeHtml(it.name||'—')+' <span style="color:var(--muted);font-size:.72rem">'+(it.date||'⚠️ بدون تاريخ')+'</span></span>';
+    html += '<span style="font-weight:700;color:var(--accent)">'+it.amount.toLocaleString()+' AED</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  preview.innerHTML = html;
+}
+window.renderBulkOwnerPreview = renderBulkOwnerPreview;
+
+async function saveBulkOwnerPayments(btn) {
+  if(MY_ROLE==='collector'||MY_ROLE==='viewer'){toast(LANG==='ar'?'ليس لديك صلاحية':'No permission','err');return;}
+
+  var text = document.getElementById('bo-text').value;
+  var method = document.getElementById('bo-meth').value;
+  var lines = text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  var items = lines.map(parseBulkOwnerLine).filter(Boolean);
+
+  if(!items.length) { toast('لم يتم التعرف على أي دفعة — تأكد من الصيغة','err'); return; }
+
+  var today = new Date().toISOString().slice(0,10);
+  var orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> جاري الحفظ...';
+
+  try {
+    var rows = items.map(function(it) {
+      var date  = it.date  || today;
+      var month = it.month || date.slice(0,7)+'-01';
+      return {
+        amount: it.amount,
+        period_month: month,
+        payment_date: date,
+        method: method,
+        reference: null,
+        notes: it.name || null,
+      };
+    });
+
+    var { error } = await sb.from('owner_payments').insert(rows);
+    if(error) throw error;
+
+    var total = items.reduce(function(s,i){return s+i.amount;},0);
+    toast('✅ تم تسجيل '+items.length+' دفعة بإجمالي '+total.toLocaleString()+' AED', 'ok');
+
+    document.getElementById('bo-text').value = '';
+    document.getElementById('bulk-owner-preview').innerHTML = '';
+
+  } catch(e) {
+    toast('خطأ: '+e.message, 'err');
+    console.error('saveBulkOwnerPayments:', e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+window.saveBulkOwnerPayments = saveBulkOwnerPayments;
 
 async function saveDep(btn) {
   if(MY_ROLE==='viewer'){toast(LANG==='ar'?'ليس لديك صلاحية':'No permission','err');return;}

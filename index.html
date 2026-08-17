@@ -358,6 +358,35 @@
 </div>
 <!-- Expenses -->
 <div class="tpanel" id="tExp">
+<div style="display:flex;gap:8px;margin-bottom:12px">
+  <button class="btn bg" style="flex:1;margin:0" onclick="toggleBulkExp()" id="btn-bulk-exp-toggle">📋 إدخال جماعي</button>
+</div>
+
+<!-- ══ فورم الإدخال الجماعي ══ -->
+<div id="bulk-exp-form" style="display:none;margin-bottom:16px">
+  <div class="fld">
+    <label>الشهر (لكل المصروفات)</label>
+    <input class="inp" id="be-month" type="month"/>
+  </div>
+  <div class="fld">
+    <label>الفئة الافتراضية</label>
+    <select class="sel" id="be-cat">
+      <option value="صيانة">صيانة</option>
+      <option value="نظافة">نظافة</option>
+      <option value="كهرباء">كهرباء</option>
+      <option value="ماء">ماء</option>
+      <option value="أخرى" selected>أخرى</option>
+    </select>
+  </div>
+  <div class="fld">
+    <label>المصروفات — كل سطر: الوصف [مسافة/تاب] المبلغ</label>
+    <textarea class="inp" id="be-text" rows="10" oninput="renderBulkExpPreview()" style="height:auto;padding:12px;line-height:1.8;font-family:monospace;font-size:.82rem" placeholder="تحويل رواتب	42&#10;نقل سرير	50&#10;ماتريل تكييف	1948&#10;..."></textarea>
+  </div>
+  <div id="bulk-exp-preview" style="margin-bottom:10px"></div>
+  <button class="btn bp" onclick="saveBulkExpenses(this)" id="btn-save-bulk-exp">✅ حفظ الكل</button>
+</div>
+
+<div id="regular-exp-form">
 <div class="fld"><label id="lbl-ecat">الفئة</label>
 <select class="sel" id="e-cat">
 <option value="صيانة">صيانة</option>
@@ -373,8 +402,31 @@
 <div class="fld"><label id="lbl-edesc">الوصف</label><input class="inp" id="e-desc" placeholder="اختياري"/></div>
 <button class="btn bp" data-click="saveExp" id="btn-save-exp">✅ تسجيل المصروف</button>
 </div>
+</div>
 <!-- Owner -->
 <div class="tpanel" id="tOwn">
+<div style="display:flex;gap:8px;margin-bottom:12px">
+  <button class="btn bg" style="flex:1;margin:0" onclick="toggleBulkOwner()" id="btn-bulk-owner-toggle">📋 إدخال جماعي</button>
+</div>
+
+<!-- ══ فورم الإدخال الجماعي للمالك ══ -->
+<div id="bulk-owner-form" style="display:none;margin-bottom:16px">
+  <div class="fld">
+    <label>طريقة الدفع (لكل الدفعات)</label>
+    <select class="sel" id="bo-meth">
+      <option value="Cash">نقدي</option>
+      <option value="Bank Transfer" selected>حوالة بنكية</option>
+    </select>
+  </div>
+  <div class="fld">
+    <label>الدفعات — كل سطر: اسم-تاريخ [مسافة/تاب] المبلغ</label>
+    <textarea class="inp" id="bo-text" rows="12" oninput="renderBulkOwnerPreview()" style="height:auto;padding:12px;line-height:1.8;font-family:monospace;font-size:.8rem" placeholder="رامي ٢-٦-٢٠٢٦	52,000&#10;رامي ٤-٦-٢٠٢٦	21,800&#10;..."></textarea>
+  </div>
+  <div id="bulk-owner-preview" style="margin-bottom:10px"></div>
+  <button class="btn bp" onclick="saveBulkOwnerPayments(this)" id="btn-save-bulk-owner">✅ حفظ الكل</button>
+</div>
+
+<div id="regular-owner-form">
 <div class="fld"><label id="lbl-oamt">المبلغ (AED)</label><input class="inp" id="o-amt" inputmode="numeric" placeholder="0" type="number"/></div>
 <div class="fld"><label id="lbl-omonth">الشهر</label><input class="inp" id="o-month" type="month" data-input="calcOwnerBalance"/></div>
 <div class="fld" id="o-balance-wrap" style="display:none">
@@ -394,6 +446,7 @@
 <div style="display:flex;gap:8px">
   <button class="btn bp" data-click="saveOwner" id="btn-save-owner" style="flex:1">💰 تسجيل الدفعة للمالك</button>
   <button onclick="printOwnerSettlement()" style="padding:14px 16px;background:var(--surf2);border:1.5px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:var(--font);font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap">🖨️ تقرير</button>
+</div>
 </div>
 </div>
 <!-- Deposit -->
