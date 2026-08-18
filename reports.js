@@ -3825,6 +3825,12 @@ async function loadArrearsReport(btn) {
       var start = new Date(startDate);
       var end   = endDate ? new Date(endDate) : new Date();
 
+      // ── قاعدة: لو تاريخ الخروج هو "يوم 1" من أي شهر، يبقى فعلياً غادر آخر يوم
+      //    في الشهر اللي قبله (يعني 2026-06-01 = 2026-05-31) ──
+      if(endDate && end.getDate() === 1) {
+        end = new Date(end.getFullYear(), end.getMonth(), 0); // آخر يوم في الشهر السابق
+      }
+
       // تطبيق فلتر التاريخ
       if(filterFrom) { var ff = new Date(filterFrom); if(ff > start) start = ff; }
       if(filterTo)   { var ft = new Date(filterTo);   if(ft < end)   end   = ft; }
